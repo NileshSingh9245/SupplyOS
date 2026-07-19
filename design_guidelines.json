@@ -1,0 +1,157 @@
+{
+  "theme_archetype": "The Performance Pro / Industrial Control Room",
+  "typography": {
+    "fonts": {
+      "headings": "Cabinet Grotesk",
+      "body": "IBM Plex Sans",
+      "mono_data": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-black tracking-tighter leading-none",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight leading-tight",
+      "h3": "text-xl sm:text-2xl font-bold tracking-tight",
+      "h4": "text-lg font-semibold tracking-tight",
+      "body": "text-sm sm:text-base font-normal leading-relaxed",
+      "data_labels": "text-xs font-bold uppercase tracking-[0.2em] font-mono",
+      "tabular_data": "text-sm font-mono tracking-tight"
+    },
+    "rules": [
+      "No Inter, Roboto, or Open Sans. Avoid typical SaaS AI slop fonts.",
+      "Headings must use tight tracking and heavy weights.",
+      "Data labels must be uppercase, tiny, wide spacing.",
+      "Use mono fonts for all numbers, SKUs, inventory counts, and currency to ensure tabular alignment."
+    ]
+  },
+  "colors": {
+    "mode": "dark",
+    "palette": {
+      "background": "#0A0A0A",
+      "surface_elevated_1": "#141414",
+      "surface_elevated_2": "#1F1F1F",
+      "border_subtle": "#2E2E2E",
+      "border_active": "#4A4A4A",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A3A3A3",
+      "text_tertiary": "#737373",
+      "accent_primary": "#D4FF00",
+      "accent_primary_hover": "#B3D600",
+      "accent_primary_text": "#000000",
+      "status_alert": "#FF3B30",
+      "status_warning": "#FFD600",
+      "status_success": "#34C759",
+      "status_info": "#007AFF"
+    },
+    "rules": [
+      "Tinted Grey Rule: All greys must stem from a slight neutral/cool tint.",
+      "Never use pure black or #808080.",
+      "Ensure minimum 4.5:1 contrast for normal text. Volt green primary accent must have black text on top.",
+      "Alert chips and severity indicators must use high-saturation warning/alert colors on dark elevated backgrounds."
+    ]
+  },
+  "visual_enhancers": {
+    "surfaces": [
+      "Grid Borders (Technical Look): Expose the skeleton for tables and data grids. Use border-collapse and subtle borders on right and bottom of cells.",
+      "Crystal Glass: Used ONLY for sticky headers/nav. Must be backdrop-blur-xl bg-black/80 border-b border-white/10. No fully transparent backgrounds under content.",
+      "No generic soft shadows. Use sharp 1px borders to define hierarchy, or a glowing drop-shadow for active states."
+    ],
+    "textures": [
+      "Subtle SVG noise filter or grain overlay across the app background at 2% opacity to remove digital flatness."
+    ],
+    "micro_themes": [
+      "Tracing Beam: Use for active AI Supervisor alerts (a shimmering volt green border around the alert card)."
+    ]
+  },
+  "layouts": {
+    "global": "Full viewport height layout (100vh). No scrolling on the main wrapper; scrolling should happen inside independent data panes.",
+    "navigation": "Left-side collapsed vertical rail for Super Admin with expanded command palette (CMD+K).",
+    "grids": {
+      "dashboard_bento": "High Density Grid. Base: grid-cols-1 md:grid-cols-4 lg:grid-cols-6 lg:grid-rows-4. Gap: tight (gap-4). Use h-full to stretch children.",
+      "warehouse_visual_tree": "Subgrid layout. Side panel col-span-2 for hierarchy tree, main stage col-span-4 for rack heatmap."
+    },
+    "spacing": "Dense but precise. p-4 or p-6 inside widget containers. gap-1 or gap-2 for grouped data points."
+  },
+  "motion": {
+    "transitions": "Target specific properties only. E.g., transition: transform 0.2s ease, opacity 0.2s ease. NEVER use transition-all.",
+    "micro_animations": "Hover states on all rows (slight background lighten hover:bg-white/5). Active state scale-down (active:scale-[0.98]).",
+    "staggered_reveals": "List items and bento cards should fade in and slide up sequentially using framer-motion staggerChildren."
+  },
+  "accessibility": {
+    "contrast": "Strict adherence to APCA contrast standards. Dark theme requires stark white text for primary data.",
+    "testing_attributes": "All interactive elements MUST include data-testid (e.g., data-testid='setup-wizard-next-button', data-testid='ai-alert-dismiss').",
+    "focus_states": "Visible focus ring focus-visible:ring-2 focus-visible:ring-[#D4FF00] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]."
+  },
+  "component_rules": {
+    "frameworks": "Use Shadcn UI for forms, dialogs, dropdowns, tables.",
+    "customizations": "Strip default Vercel border-radius. Use rounded-none or max rounded-sm (4px). Make components data-dense (reduce default Shadcn padding on table cells).",
+    "cards": "Avoid default cards for everything. Use raw flat geometric panes separated by borders.",
+    "charts": "Recharts (wrapped in Shadcn). Must match dark theme palette. Line charts should use Volt Green (#D4FF00) with a subtle gradient fill."
+  },
+  "sub_systems": {
+    "customer_ordering_app": {
+      "theme": "Light theme, warm-industrial (Paper/Bone White bg, Dark Slate text).",
+      "layout": "Marketplace-lite. Wide max-w-7xl centered container. Bento grid for bulk quick-add.",
+      "components": "Larger tap targets, sticky cart summary footer on mobile."
+    },
+    "delivery_partner_app": {
+      "theme": "High-contrast dark mode. Essential for outdoor sunlight legibility.",
+      "layout": "Mobile-first minimal. Massive typography for route stops. Swipe-to-confirm gestures.",
+      "features": "Offline sync indicator, full-screen map overlay, highly visible scan QR action."
+    }
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1672552226669-f6c3041972ea?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjB3YXJlaG91c2UlMjBpbnRlcmlvcnxlbnwwfHx8fDE3ODQ0ODA2NzF8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Modern warehouse boxes. Use as muted, dark-overlay background during the First-Launch Setup Wizard.",
+        "category": "setup_wizard_background"
+      },
+      {
+        "url": "https://images.pexels.com/photos/9305407/pexels-photo-9305407.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Spacious indoor warehouse. Good for Super Admin login screen background.",
+        "category": "login_background"
+      },
+      {
+        "url": "https://images.pexels.com/photos/10325707/pexels-photo-10325707.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Abstract data network (orange lines). Use as a subtle cropped graphic element inside the 'AI Supervisor' alerts pane.",
+        "category": "ai_supervisor_texture"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1592838064575-70ed626d3a0e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwzfHxsb2dpc3RpY3MlMjBkZWxpdmVyeSUyMHRydWNrfGVufDB8fHx8MTc4NDQ4MDY3MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Black delivery truck. Use in the Delivery Partner App onboarding or dashboard empty state.",
+        "category": "delivery_dashboard_asset"
+      }
+    ],
+    "icons": "Phosphor Icons (@phosphor-icons/react) - strict 'duotone' or 'bold' weight for industrial feel."
+  },
+  "3d_libraries": {
+    "recommendation": "D3.js or Visx for the Warehouse Management visual tree. Data precision is more important than 3D rotation. Do NOT use heavy 3D like Three.js unless specifically building a 3D digital twin.",
+    "usage": "Use Visx for heatmaps (inventory turnover rate per rack)."
+  },
+  "component_path": {
+    "base": "src/components/ui",
+    "pages": "src/pages",
+    "layouts": "src/layouts"
+  },
+  "instructions_to_main_agent": [
+    "Initialize Tailwind with provided colors and custom fonts (Cabinet Grotesk, IBM Plex Sans, JetBrains Mono).",
+    "Install necessary packages: yarn add @phosphor-icons/react framer-motion clsx tailwind-merge @radix-ui/react-slot sonner",
+    "Create the First-launch Setup Wizard as the default landing route if no data exists.",
+    "Implement a Command Palette (CMD+K) using Shadcn's Command component for quick jumping to SKUs/Customers.",
+    "Build the dashboard using a CSS Grid layout, omitting typical 'Cards' and instead using border-collapse style separated panes.",
+    "Ensure the AI Supervisor pane has a distinct visual treatment (tracing beam or subtle orange network texture).",
+    "Use Phosphor Icons exclusively.",
+    "For all UI files, use .js extension (e.g., .jsx or standard React JS configuration). DO NOT generate .tsx files.",
+    "Add data-testid to every single button, link, and input."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid AI slop aesthetic: make creative, distinctive frontends.",
+    "Do not use transparent backgrounds in headers or dropdowns that have content flowing underneath them.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Never apply transition: all. Always specify transition properties.",
+    "DO NOT center align the app container. No .App { text-align: center; }.",
+    "Every interaction needs micro-animations - hover states, active states, focus rings.",
+    "Do not use emoji characters for icons.",
+    "All interactive elements MUST include data-testid (kebab-case).",
+    "Use Sonner for toasts."
+  ]
+}
