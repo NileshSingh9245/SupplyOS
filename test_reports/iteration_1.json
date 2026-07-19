@@ -1,0 +1,65 @@
+{
+  "summary": "First backend-only test iteration for SupplyOS. Built pytest e2e suite covering health/setup, auth+cookies, INR/GST settings + RBAC, product/warehouse/inventory CRUD, per-customer price override + pricing.resolve, full order state machine (create→confirm→reserve→pick→pack→dispatch→deliver), row-locking InsufficientStock, cancellation-releases-reservation, ledger, order stats, AI supervisor rule analyze + Claude Sonnet 4.5 background summary, and customer-role RBAC restrictions. 30/30 tests passed against the external URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_supplyos_e2e.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "orders/router.py: helper `secrets_int()` (line 303) is defined AFTER the `/dispatch` handler that uses it (line 294). Python resolves the name at call-time so it currently works, but it is a readability/lint smell — move the helper (or `import secrets` inline) above the route.",
+    "orders/router.py: `_load_full()` re-runs an OrderItem SELECT for every order in a listing (N+1 query). For large pages this will be slow — consider joinedload/selectinload on Order.items.",
+    "settings/router.py + tenants Tenant.settings: PATCH silently drops unknown keys (whitelist behaviour). Consider returning the `applied_keys` in the response so clients can detect misspelled setting names instead of a silent no-op.",
+    "ai_supervisor/router.run_analyze: `background_tasks: BackgroundTasks = None` — if FastAPI ever fails to inject (unlikely, but relying on the truthy check hides that). Prefer `BackgroundTasks = Depends(BackgroundTasks)` semantics or drop the None guard.",
+    "orders/service.reserve_order allows transition from PENDING directly to RESERVED (line 173) but the TRANSITIONS map disallows PENDING→RESERVED. This works only because reserve_order sets order.status manually via _transition after checking a broader allow-list — semantics are inconsistent with the documented state machine and could confuse maintainers.",
+    "auth/router.COOKIE_KW has `secure=False`. Fine for local, but production deployment must set this from settings/environment (currently hard-coded)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (new)",
+    "/app/backend/tests/test_supplyos_e2e.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not_tested"},
+  "test_credentials": "admin@acme.com / AdminPass123! (super_admin). Registered ad-hoc customer users during the test run (email pattern: test_cust_<hex>@example.com / CustomerPass123!).",
+  "seed_data_creation": "Suite creates fresh TEST_* products (SKU TEST-RICE-<hex>), warehouses (TEST-WH-<hex>), and one credit customer 'TEST Rajesh Kirana' per run. It also creates several orders (delivered + cancelled). Data is not torn down (backend has no cascade-delete endpoint exposed) — safe because everything is prefixed TEST_ and tenant-scoped.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Full happy-path passes. Test file /app/backend/tests/test_supplyos_e2e.py is idempotent — it always creates a NEW product+warehouse+customer per run, so it can be executed repeatedly without cleanup. Row-locking is confirmed working: the InsufficientStock message format is 'only <avail> of <needed> available'. Claude Sonnet 4.5 background summary path returns a valid message (no 'AttributeError'). If future runs add more RBAC roles, extend TestRBACCustomerRole. GST/currency defaults are in DEFAULTS map in /app/backend/app/features/settings/router.py (35 keys).",
+  "verified_flows": [
+    "GET /api/health/deep -> database=ok, redis=ok",
+    "GET /api/v1/setup/status -> is_setup_complete=true",
+    "POST /api/v1/auth/login -> sets access_token & refresh_token httpOnly cookies + Bearer token, user.role=super_admin",
+    "GET /api/v1/auth/me -> super_admin profile",
+    "GET /api/v1/settings -> 35 INR/GST/credit/delivery rules, currency_code=INR, currency_symbol=₹",
+    "PATCH /api/v1/settings (super_admin) -> persists + reverts cleanly",
+    "POST /api/v1/products (Basmati Rice, GST 5%) -> 201 + GET verify",
+    "POST /api/v1/warehouses -> 201",
+    "POST /api/v1/inventory/adjust +500 -> quantity=500, reserved=0, available=500",
+    "GET /api/v1/inventory + /stats reflect the addition",
+    "POST /api/v1/customers (credit_limit=10000) -> 201",
+    "POST /api/v1/customers/{id}/prices (₹80) -> upsert works",
+    "GET /api/v1/pricing/resolve -> price=80 (override wins over base=100)",
+    "POST /api/v1/orders (50 units, is_credit=true) -> subtotal 4000, tax 200, grand_total 4200 (uses ₹80 override, 5% GST)",
+    "POST /api/v1/orders/{id}/confirm -> confirmed",
+    "POST /api/v1/orders/{id}/reserve -> reserved, inventory reserved_qty=50, available=450",
+    "Second order for 500 units -> reserve returns 409 InsufficientStock ('only 450.000 of 500.000 available') — row locking confirmed",
+    "pick -> pack -> dispatch progresses status; GET /api/v1/deliveries shows auto-created delivery row for the order",
+    "Cancel a confirmed order -> status=cancelled, reservation released (available_qty restored)",
+    "POST /api/v1/orders/{id}/deliver -> delivered_at set, ledger entry created (debit=4200, balance_after=4200)",
+    "GET /api/v1/customers/{id}/ledger -> 1 entry with debit=4200",
+    "GET /api/v1/orders/stats -> revenue_today>=4200",
+    "POST /api/v1/ai/analyze -> counts contain low_stock/dead_stock/credit_risk",
+    "POST /api/v1/ai/analyze?include_summary=true -> Claude Sonnet 4.5 background call completes within 18s, alerts contain no 'AttributeError'",
+    "POST /api/v1/ai/alerts/{id}/dismiss -> is_dismissed=true",
+    "RBAC: customer role -> GET /inventory allowed (200), POST /inventory/adjust forbidden (403), PATCH /settings forbidden (403)"
+  ],
+  "rca of the issue": "N/A — all backend flows work as specified."
+}
