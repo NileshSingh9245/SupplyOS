@@ -80,6 +80,7 @@ class SettingsOut(BaseModel):
     currency_symbol: str
     locale: str
     values: dict[str, Any]
+    applied_keys: list[str] | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -141,7 +142,7 @@ async def update_settings(
     return SettingsOut(
         tenant_id=str(t.id), company_name=t.name,
         currency_code=values["currency_code"], currency_symbol=values["currency_symbol"],
-        locale=values["locale"], values=values,
+        locale=values["locale"], values=values, applied_keys=list(applied.keys()),
     )
 
 

@@ -280,6 +280,13 @@ async def pack(order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Dep
     return await _load_full(db, order)
 
 
+import secrets
+
+
+def secrets_int() -> int:
+    return secrets.randbelow(900_000) + 100_000  # 6-digit OTP
+
+
 @router.post("/{order_id}/dispatch", response_model=OrderOut)
 async def dispatch(order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_staff)):
     order = await order_service.advance_status(
@@ -300,9 +307,9 @@ async def dispatch(order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user
     return await _load_full(db, order)
 
 
-def secrets_int() -> int:
-    import secrets
-    return secrets.randbelow(900_000) + 100_000  # 6-digit OTP
+def secrets_int_unused() -> int:  # kept to avoid import churn; use module-level secrets_int
+    import secrets as _s
+    return _s.randbelow(900_000) + 100_000
 
 
 @router.post("/{order_id}/deliver", response_model=OrderOut)

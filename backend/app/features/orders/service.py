@@ -32,7 +32,7 @@ from app.infrastructure.db.models.product import Product
 
 # Valid transitions
 TRANSITIONS: dict[str, set[str]] = {
-    OrderStatus.PENDING.value: {OrderStatus.CONFIRMED.value, OrderStatus.CANCELLED.value},
+    OrderStatus.PENDING.value: {OrderStatus.CONFIRMED.value, OrderStatus.RESERVED.value, OrderStatus.CANCELLED.value},
     OrderStatus.CONFIRMED.value: {OrderStatus.RESERVED.value, OrderStatus.CANCELLED.value},
     OrderStatus.RESERVED.value: {OrderStatus.PICKED.value, OrderStatus.CANCELLED.value},
     OrderStatus.PICKED.value: {OrderStatus.PACKED.value, OrderStatus.CANCELLED.value},
