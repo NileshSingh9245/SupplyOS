@@ -171,7 +171,11 @@ jobs:
 
       - name: Run frontend build
         working-directory: frontend
-        run: npm run build
+        env:
+          SUPPLYOS_TEST_NODE_ENV: production
+          SUPPLYOS_TEST_DIST_DIR: .runtime/ci-production
+          SUPPLYOS_TEST_BACKEND: http://127.0.0.1:3801
+        run: node --require ./tests/onboarding-env.cjs node_modules/next/dist/bin/next build --webpack
 
       - name: Install browser test runtime
         working-directory: frontend
@@ -180,8 +184,8 @@ jobs:
       - name: Run frontend regressions
         working-directory: frontend
         run: |
-          npm run test
-          PLAYWRIGHT_PRODUCTION=1 NEXT_DIST_DIR=.next npm run test
+          NEXT_DIST_DIR=.runtime/ci-development npm run test
+          PLAYWRIGHT_PRODUCTION=1 NEXT_DIST_DIR=.runtime/ci-production npm run test
 
   docker-build:
     name: Docker Build
