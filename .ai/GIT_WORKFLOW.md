@@ -36,7 +36,7 @@ After every milestone:
 3. Update `CHANGELOG.md`.
 4. Commit: `chore(release): milestone <name>`.
 5. Tag: `git tag -a v<X.Y.Z> -m "..."`.
-6. Push using **Save to GitHub** action (Emergent). Repo: `https://github.com/NileshSingh9245/SupplyOS.git`.
+6. Only when explicitly requested, use normal Git/GitHub tooling for the intended reviewed files. Repository: `https://github.com/NileshSingh9245/SupplyOS.git`. No platform publishing action or automatic commit/push is required.
 
 ## Forbidden
 - ❌ Direct commits to `main`.

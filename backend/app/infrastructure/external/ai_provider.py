@@ -1,4 +1,4 @@
-"""AI provider protocol + Claude implementation via emergentintegrations.
+"""Direct, optional Claude Messages API configured by the application owner.
 
 The rest of the codebase depends only on `AIProvider`. Swap providers by
 changing `AI_PROVIDER` env var and adding a new implementation.
@@ -6,6 +6,8 @@ changing `AI_PROVIDER` env var and adding a new implementation.
 from __future__ import annotations
 
 from typing import Protocol
+
+import httpx
 
 from app.core.config import get_settings
 
@@ -19,10 +21,10 @@ class AIProvider(Protocol):
     ) -> str: ...
 
 
-class ClaudeProvider:
-    """Claude Sonnet 4.5 via emergentintegrations.LlmChat."""
+class AnthropicProvider:
+    """Native Messages API; uses the core HTTP client rather than a private SDK."""
 
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-5-20250929"):
+    def __init__(self, api_key: str, model: str):
         self._api_key = api_key
         self._model = model
 
@@ -30,23 +32,47 @@ class ClaudeProvider:
         self, *, system_prompt: str, user_prompt: str,
         max_tokens: int = 800, temperature: float = 0.2,
     ) -> str:
-        # Lazy import so backend can start even if emergentintegrations is temporarily broken
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        import uuid
+        if settings.free_only_mode:
+            raise RuntimeError("External AI summaries are on hold in free-only mode")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": self._api_key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                    json={
+                        "model": self._model,
+                        "system": system_prompt,
+                        "messages": [{"role": "user", "content": user_prompt}],
+                        "max_tokens": max_tokens,
+                        "temperature": temperature,
+                    },
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(f"Anthropic request failed (HTTP {exc.response.status_code})") from None
+        except httpx.RequestError:
+            raise RuntimeError("Anthropic service is unreachable") from None
 
-        chat = LlmChat(
-            api_key=self._api_key,
-            session_id=str(uuid.uuid4()),
-            system_message=system_prompt,
-        ).with_model("anthropic", self._model).with_params(max_tokens=max_tokens, temperature=temperature)
-        resp = await chat.send_message(UserMessage(text=user_prompt))
-        return resp if isinstance(resp, str) else str(resp)
+        try:
+            content = response.json()["content"]
+            if not isinstance(content, list):
+                raise ValueError
+            text = "\n".join(
+                block["text"] for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+                and isinstance(block.get("text"), str)
+            ).strip()
+        except (ValueError, KeyError, TypeError):
+            raise RuntimeError("Anthropic returned an invalid message") from None
+        if not text:
+            raise RuntimeError("Anthropic returned no text content")
+        return text
 
 
 def get_ai_provider() -> AIProvider | None:
-    if not settings.emergent_llm_key:
+    if settings.free_only_mode or not settings.anthropic_api_key:
         return None
-    if settings.ai_provider == "anthropic":
-        return ClaudeProvider(api_key=settings.emergent_llm_key, model=settings.ai_model)
-    # Future: openai, gemini
-    return ClaudeProvider(api_key=settings.emergent_llm_key)
+    return AnthropicProvider(api_key=settings.anthropic_api_key, model=settings.ai_model)

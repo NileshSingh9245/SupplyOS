@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import String, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, TimestampMixin, UUIDPKMixin
+from app.infrastructure.db.base import Base, TimestampMixin, UUIDPKMixin
 
 
 class Tenant(Base, UUIDPKMixin, TimestampMixin):

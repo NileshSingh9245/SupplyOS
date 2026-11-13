@@ -5,30 +5,33 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, Header
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.enums import PaymentMode
+from app.core.enums import PaymentMode, Role
 from app.core.exceptions import NotFound
-from app.infrastructure.db.models.customer import Customer, LedgerEntry
+from app.features.payments import service as payment_service
 from app.infrastructure.db.models.order import Payment
-from app.shared.audit import audit
-from app.shared.deps import require_staff
+from app.shared.deps import require_roles
+from app.shared import idempotency
 from app.shared.schemas import ORMModel
 
 router = APIRouter(prefix="/payments", tags=["payments"])
+require_finance_writer = require_roles(Role.SUPER_ADMIN, Role.ACCOUNTANT)
+require_payment_reader = require_roles(Role.SUPER_ADMIN, Role.ACCOUNTANT, Role.CUSTOMER)
 
 
 class PaymentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     customer_id: uuid.UUID
     order_id: uuid.UUID | None = None
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2, allow_inf_nan=False)
     mode: PaymentMode
-    reference: str | None = None
-    note: str | None = None
+    reference: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
 
 
 class PaymentOut(ORMModel):
@@ -40,53 +43,52 @@ class PaymentOut(ORMModel):
     reference: str | None
     note: str | None
     created_at: datetime
+    allocation_kind: str
 
 
 @router.post("", response_model=PaymentOut, status_code=201)
 async def record_payment(
-    payload: PaymentCreate, db: AsyncSession = Depends(get_db), user=Depends(require_staff)
+    payload: PaymentCreate, db: AsyncSession = Depends(get_db), user=Depends(require_finance_writer),
+    idempotency_key: uuid.UUID | None = Header(default=None, alias="X-Idempotency-Key"),
 ):
-    customer = (await db.execute(
-        select(Customer).where(
-            Customer.id == payload.customer_id, Customer.tenant_id == user.tenant_id
-        ).with_for_update()
-    )).scalar_one_or_none()
-    if not customer:
-        raise NotFound("Customer not found")
-
-    p = Payment(
-        tenant_id=user.tenant_id, customer_id=customer.id, order_id=payload.order_id,
-        amount=payload.amount, mode=payload.mode.value, reference=payload.reference,
-        collected_by=user.id, note=payload.note,
+    claim = await idempotency.claim(
+        db, tenant_id=user.tenant_id, actor_id=user.id, operation="payments.record",
+        key=idempotency_key, payload=payload,
     )
-    db.add(p)
-
-    # Reduce outstanding + ledger credit
-    customer.outstanding = max(Decimal("0"), Decimal(str(customer.outstanding)) - payload.amount)
-    db.add(LedgerEntry(
-        tenant_id=user.tenant_id, customer_id=customer.id,
-        debit=Decimal("0"), credit=payload.amount,
-        balance_after=customer.outstanding,
-        reference_type="payment", note=payload.note,
-    ))
-
-    await audit(
-        db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
-        action="payments.record", resource_type="payment",
-        meta={"customer_id": str(customer.id), "amount": str(payload.amount), "mode": payload.mode.value},
+    if claim is not None and claim.response_body is not None:
+        visible = (await db.execute(select(Payment.id).where(
+            Payment.id == claim.resource_id, Payment.tenant_id == user.tenant_id,
+            Payment.customer_id == payload.customer_id,
+        ))).scalar_one_or_none()
+        if visible is None:
+            raise NotFound("Payment not found")
+        return PaymentOut.model_validate(claim.response_body)
+    payment = await payment_service.record_payment(
+        db, tenant_id=user.tenant_id, customer_id=payload.customer_id,
+        order_id=payload.order_id, amount=payload.amount, mode=payload.mode.value,
+        actor_id=user.id, actor_email=user.email, reference=payload.reference, note=payload.note,
+    )
+    await db.flush()
+    response = PaymentOut.model_validate(payment)
+    idempotency.remember(
+        claim, response=response, status_code=201, resource_type="payment", resource_id=payment.id,
     )
     await db.commit()
-    await db.refresh(p)
-    return p
+    return response
 
 
 @router.get("", response_model=list[PaymentOut])
 async def list_payments(
     customer_id: uuid.UUID | None = None,
-    db: AsyncSession = Depends(get_db), user=Depends(require_staff),
+    order_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db), user=Depends(require_payment_reader),
 ):
     stmt = select(Payment).where(Payment.tenant_id == user.tenant_id)
+    if user.role == Role.CUSTOMER.value:
+        stmt = stmt.where(Payment.customer_id == user.customer_id)
     if customer_id:
         stmt = stmt.where(Payment.customer_id == customer_id)
+    if order_id:
+        stmt = stmt.where(Payment.order_id == order_id)
     stmt = stmt.order_by(Payment.created_at.desc()).limit(200)
     return (await db.execute(stmt)).scalars().all()

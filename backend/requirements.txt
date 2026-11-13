@@ -16,14 +16,14 @@ redis==5.2.1
 # Auth
 bcrypt==4.2.1
 pyjwt==2.10.1
+Pillow==13.0.0
 email-validator==2.2.0
 
 # Validation
 pydantic==2.10.4
 pydantic-settings==2.7.0
 
-# AI (Claude via emergentintegrations)
-emergentintegrations
+# Optional direct AI calls use the public HTTP client; no platform SDK is required.
 
 # Utilities
 python-dateutil==2.9.0.post0
@@ -34,3 +34,4 @@ orjson==3.10.12
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.0
+requests==2.32.3

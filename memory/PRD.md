@@ -7,7 +7,7 @@ Build a production-grade SaaS platform named **Smart Supply Chain OS** (branded 
 
 ## Architecture — as delivered
 - **Backend**: FastAPI + SQLAlchemy 2 (async) + Alembic + PostgreSQL 15 + Redis 7.
-- **AI**: Claude Sonnet 4.5 via `emergentintegrations` behind `AIProvider` abstraction.
+- **AI**: Optional owner-configured direct Messages API behind `AIProvider`; no hosted-builder SDK is required.
 - **Auth**: JWT + refresh in httpOnly cookies, RBAC (5 roles), brute-force lockout, audit log.
 - **Admin dashboard**: Next.js 14 (App Router) + TS + Tailwind + Zustand + React Query.
 - **Mobile**: Flutter (customer + delivery) scaffolds — Riverpod, GoRouter, Dio.
@@ -31,6 +31,14 @@ Build a production-grade SaaS platform named **Smart Supply Chain OS** (branded 
 - INR currency, GST-aware invoices.
 - AI supervisor: dead stock, low stock, reorder, credit risk, Claude summaries.
 - Admin can edit **35 business rules** from dashboard (currency, GST, credit, delivery, AI cadence).
+
+## Current Recovery Checkpoint - 2026-11-10
+
+- Native opt-in SMTP password recovery and public forgot/reset pages are implemented. Tokens use fragments/browser memory, not query parameters or persistent storage. Current recipient/token state is rechecked after committed issuance; success clears cookies and requires new login.
+- HMAC Redis fixed-window IP/identity limits, cooldown and no-wait capacity precede lookup. Disabled/unavailable admission is `503`, limits `429`, and accepted eligibility/delivery outcomes share generic `200`. Delivery is best-effort, not a durable queue; verified TLS policy and sanitized failures are implemented.
+- Full owned backend: **507 passed/3 skipped in 270.45 seconds**, including real PostgreSQL recipient/cookie cases and offline SMTP/cancellation contracts. Frontend: **100 dev and 100 production passes**, lint/types and a **19-page build**. Historical evidence below is not a count to add.
+- Working-tree metadata/stale compiled artifacts were cleaned without changing report counts/timestamps, private credential artifacts, Git index/history or unrelated staging. No additional provider stack was selected or activated. Supported private setup is in `docs/EXTERNAL_SERVICES.md`.
+- Native Redis/Lua, live relay/sender/DNS, whole DNS deadlines, durability and production trust remain unverified. Staff provisioning/email verification, OTP delivery, S3/gateway/maps/WhatsApp/voice, mobile/full scenario acceptance remain incomplete.
 
 ## What's implemented (2026-01-19)
 ### Backend `/api/v1`
@@ -91,7 +99,7 @@ Build a production-grade SaaS platform named **Smart Supply Chain OS** (branded 
 - [ ] SOC2 audit prep (encryption at rest, backup policy).
 
 ## Next tasks list
-1. Push current tree to `NileshSingh9245/SupplyOS` via **Save to GitHub** in Emergent.
+1. Review and publish intended changes using normal Git/GitHub only when explicitly requested; no automatic publishing or platform action.
 2. Test frontend UI flows end-to-end with a testing pass focused on the admin dashboard.
 3. Ship P0 items above.
 4. Add Celery worker + reservation TTL sweeper.

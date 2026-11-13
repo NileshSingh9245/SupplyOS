@@ -4,11 +4,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Index, JSON
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer, Index, JSON, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, TimestampMixin, UUIDPKMixin
+from app.infrastructure.db.base import Base, TimestampMixin, UUIDPKMixin
 from app.core.enums import Role
 
 
@@ -31,6 +31,9 @@ class User(Base, UUIDPKMixin, TimestampMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    session_version: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0"), nullable=False
+    )
     # Optional link to customer record (only when role=customer)
     customer_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL")
@@ -39,11 +42,21 @@ class User(Base, UUIDPKMixin, TimestampMixin):
 
 class RefreshToken(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index(
+            "ix_refresh_tokens_active_session", "session_id", unique=True,
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     jti: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), default=uuid.uuid4, server_default=text("gen_random_uuid()"),
+        nullable=False,
+    )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     device_info: Mapped[str | None] = mapped_column(String(255))

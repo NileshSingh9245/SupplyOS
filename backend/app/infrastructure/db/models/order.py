@@ -6,12 +6,13 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from sqlalchemy import (
-    String, Boolean, Numeric, ForeignKey, Index, Integer, DateTime, Date, JSON
+    String, Boolean, Numeric, ForeignKey, Index, Integer, DateTime, Date, JSON,
+    CheckConstraint, text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, TimestampMixin, UUIDPKMixin
+from app.infrastructure.db.base import Base, TimestampMixin, UUIDPKMixin
 from app.core.enums import OrderStatus
 
 
@@ -21,6 +22,24 @@ class Order(Base, UUIDPKMixin, TimestampMixin):
         Index("ix_orders_tenant_number", "tenant_id", "order_number", unique=True),
         Index("ix_orders_tenant_status", "tenant_id", "status"),
         Index("ix_orders_customer", "customer_id"),
+        CheckConstraint("payment_mode IN ('cash', 'credit')", name="payment_mode"),
+        CheckConstraint(
+            "subtotal >= 0 AND subtotal <= 999999999999.99 "
+            "AND tax_total >= 0 AND tax_total <= 999999999999.99 "
+            "AND discount_total >= 0 AND discount_total <= 999999999999.99 "
+            "AND grand_total >= 0 AND grand_total <= 999999999999.99 "
+            "AND amount_paid >= 0 AND amount_paid <= grand_total",
+            name="financial_totals",
+        ),
+        CheckConstraint(
+            "credit_hold_amount >= 0 AND credit_hold_amount <= grand_total "
+            "AND ((payment_mode = 'credit' AND status IN "
+            "('pending', 'confirmed', 'reserved', 'picked', 'packed', 'out_for_delivery') "
+            "AND credit_hold_amount = grand_total) "
+            "OR (credit_hold_amount = 0 AND (payment_mode = 'cash' OR status IN "
+            "('delivered', 'paid', 'completed', 'cancelled'))))",
+            name="credit_hold",
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -39,6 +58,12 @@ class Order(Base, UUIDPKMixin, TimestampMixin):
     discount_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), nullable=False)
     grand_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), nullable=False)
     amount_paid: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), nullable=False)
+    payment_mode: Mapped[str] = mapped_column(
+        String(20), default="cash", server_default=text("'cash'"), nullable=False,
+    )
+    credit_hold_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0"), server_default=text("0"), nullable=False,
+    )
 
     scheduled_delivery_date: Mapped[date | None] = mapped_column(Date)
     delivery_address: Mapped[str | None] = mapped_column(String(500))
@@ -50,10 +75,32 @@ class Order(Base, UUIDPKMixin, TimestampMixin):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     meta: Mapped[dict | None] = mapped_column(JSON, default=dict)
 
+    @property
+    def payment_status(self) -> str:
+        if self.amount_paid == self.grand_total:
+            return "paid"
+        return "partial" if self.amount_paid > 0 else "unpaid"
+
+    @property
+    def amount_due(self) -> Decimal:
+        return self.grand_total - self.amount_paid
+
 
 class OrderItem(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "order_items"
-    __table_args__ = (Index("ix_order_items_order", "order_id"),)
+    __table_args__ = (
+        Index("ix_order_items_order", "order_id"),
+        CheckConstraint(
+            "quantity > 0 AND quantity <= 9999999999999.999 "
+            "AND picked_qty >= 0 AND picked_qty <= quantity "
+            "AND unit_price >= 0 AND unit_price <= 999999999999.99 "
+            "AND gst_rate >= 0 AND gst_rate <= 999.99 "
+            "AND line_subtotal >= 0 AND line_subtotal <= 999999999999.99 "
+            "AND line_tax >= 0 AND line_tax <= 999999999999.99 "
+            "AND line_total >= 0 AND line_total <= 999999999999.99",
+            name="financial_line",
+        ),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     order_id: Mapped[uuid.UUID] = mapped_column(
@@ -76,7 +123,12 @@ class OrderItem(Base, UUIDPKMixin, TimestampMixin):
 class OrderReservation(Base, UUIDPKMixin, TimestampMixin):
     """Links order items to specific inventory rows they've locked."""
     __tablename__ = "order_reservations"
-    __table_args__ = (Index("ix_reservations_order", "order_id"),)
+    __table_args__ = (
+        Index("ix_reservations_order", "order_id"),
+        CheckConstraint(
+            "quantity > 0 AND quantity <= 9999999999999.999", name="quantity",
+        ),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     order_id: Mapped[uuid.UUID] = mapped_column(
@@ -109,7 +161,14 @@ class OrderStatusHistory(Base, UUIDPKMixin, TimestampMixin):
 
 class Payment(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "payments"
-    __table_args__ = (Index("ix_payments_order", "order_id"), Index("ix_payments_customer", "customer_id"))
+    __table_args__ = (
+        Index("ix_payments_order", "order_id"), Index("ix_payments_customer", "customer_id"),
+        CheckConstraint("amount > 0 AND amount <= 999999999999.99", name="positive_amount"),
+        CheckConstraint(
+            "mode IN ('cash', 'upi', 'bank_transfer', 'credit') "
+            "AND (mode <> 'credit' OR order_id IS NULL)", name="funding_mode",
+        ),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     order_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -124,12 +183,23 @@ class Payment(Base, UUIDPKMixin, TimestampMixin):
     collected_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     note: Mapped[str | None] = mapped_column(String(500))
 
+    @property
+    def allocation_kind(self) -> str:
+        if self.order_id is not None:
+            return "order_payment"
+        return "credit_note" if self.mode == "credit" else "unallocated_advance"
+
 
 class Delivery(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "deliveries"
     __table_args__ = (
         Index("ix_deliveries_order", "order_id", unique=True),
         Index("ix_deliveries_partner_date", "partner_id", "scheduled_date"),
+        CheckConstraint(
+            "cash_collected >= 0 AND cash_collected <= 999999999999.99 "
+            "AND upi_collected >= 0 AND upi_collected <= 999999999999.99",
+            name="collections",
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

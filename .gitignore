@@ -5,3 +5,24 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Keep sanitized setup templates, never local secrets.
+!.env.example
+!**/.env.example
+
+# Generated dependencies, build output, and local verification state.
+node_modules/
+.next/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.dart_tool/
+build/
+*.tsbuildinfo
+.runtime/
+test_reports/runtime/
+
+# Dedicated local Android review signing, never production keys.
+/.private/review-signing/

@@ -1,7 +1,6 @@
 """Alembic env — uses sync PSYCOPG2 URL from settings for autogenerate."""
 from __future__ import annotations
 
-import os
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -11,16 +10,14 @@ from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-
-from app.core.database import Base  # noqa: E402
+from app.core.config import DatabaseSettings  # noqa: E402
+from app.infrastructure.db.base import Base  # noqa: E402
 from app.infrastructure.db import models as _models  # noqa: E402,F401 register models
 
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL_SYNC"])
+config.set_main_option("sqlalchemy.url", DatabaseSettings().database_url_sync.replace("%", "%%"))
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

@@ -1,0 +1,12 @@
+/.gradle/
+/captures/
+/local.properties
+*.iml
+GeneratedPluginRegistrant.java
+.cxx/
+
+# Wrapper scripts and the verified wrapper JAR are required runner sources.
+# Signing configuration and keystores must remain private.
+key.properties
+**/*.keystore
+**/*.jks

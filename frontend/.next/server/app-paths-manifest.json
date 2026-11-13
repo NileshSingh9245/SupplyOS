@@ -1,8 +1,0 @@
-{
-  "/(admin)/dashboard/page": "app/(admin)/dashboard/page.js",
-  "/(admin)/inventory/page": "app/(admin)/inventory/page.js",
-  "/(admin)/warehouses/page": "app/(admin)/warehouses/page.js",
-  "/(admin)/finance/page": "app/(admin)/finance/page.js",
-  "/(admin)/products/page": "app/(admin)/products/page.js",
-  "/(admin)/ai-supervisor/page": "app/(admin)/ai-supervisor/page.js"
-}

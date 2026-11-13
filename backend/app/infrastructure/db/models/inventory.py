@@ -12,7 +12,7 @@ from sqlalchemy import Numeric, ForeignKey, Index, String, CheckConstraint, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, TimestampMixin, UUIDPKMixin
+from app.infrastructure.db.base import Base, TimestampMixin, UUIDPKMixin
 
 
 class InventoryItem(Base, UUIDPKMixin, TimestampMixin):
@@ -22,6 +22,7 @@ class InventoryItem(Base, UUIDPKMixin, TimestampMixin):
             "ix_inv_unique_location",
             "tenant_id", "product_id", "warehouse_id", "rack_id", "shelf_id", "batch_id",
             unique=True,
+            postgresql_nulls_not_distinct=True,
         ),
         Index("ix_inv_tenant_product", "tenant_id", "product_id"),
         Index("ix_inv_tenant_warehouse", "tenant_id", "warehouse_id"),

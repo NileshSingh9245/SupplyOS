@@ -3,19 +3,21 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.enums import AlertCategory, AlertSeverity
 from app.core.exceptions import NotFound
 from app.features.ai_supervisor import service as ai_service
 from app.infrastructure.db.models.ai_alert import AIAlert
-from app.shared.deps import get_current_user, require_staff
+from app.infrastructure.external.ai_provider import get_ai_provider
+from app.shared.deps import require_staff
 from app.shared.schemas import ORMModel
 
 router = APIRouter(prefix="/ai", tags=["ai_supervisor"])
@@ -37,6 +39,23 @@ class AlertOut(ORMModel):
 
 class AnalyzeResult(BaseModel):
     counts: dict[str, int]
+    summary_status: Literal["not_requested", "queued", "unavailable", "held_free_only"] = "not_requested"
+
+
+class AICapabilities(BaseModel):
+    free_only_mode: bool
+    can_request_summary: bool
+    summary_status: Literal["configured", "unavailable", "held_free_only"]
+
+
+@router.get("/capabilities", response_model=AICapabilities)
+async def capabilities(user=Depends(require_staff)) -> AICapabilities:
+    free_only = get_settings().free_only_mode
+    configured = not free_only and get_ai_provider() is not None
+    return AICapabilities(
+        free_only_mode=free_only, can_request_summary=configured,
+        summary_status="held_free_only" if free_only else "configured" if configured else "unavailable",
+    )
 
 
 class PeakHourResponse(BaseModel):
@@ -48,9 +67,9 @@ async def list_alerts(
     category: AlertCategory | None = None,
     severity: AlertSeverity | None = None,
     include_dismissed: bool = False,
-    limit: int = Query(100, le=500),
+    limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_staff),
 ):
     stmt = select(AIAlert).where(AIAlert.tenant_id == user.tenant_id)
     if category:
@@ -88,6 +107,7 @@ async def run_analyze(
     include_summary: bool = False,
 ):
     counts = await ai_service.run_all_analyses(db, user.tenant_id)
+    summary_status: Literal["not_requested", "queued", "unavailable", "held_free_only"] = "not_requested"
     if include_summary:
         # Run summarization in the background so response is fast
         tenant_id = user.tenant_id
@@ -96,12 +116,17 @@ async def run_analyze(
             async with AsyncSessionLocal() as s:
                 await ai_service.claude_summarize(s, tenant_id)
 
-        if background_tasks:
+        if get_settings().free_only_mode:
+            summary_status = "held_free_only"
+        elif get_ai_provider() is None or background_tasks is None:
+            summary_status = "unavailable"
+        else:
             background_tasks.add_task(_bg)
-    return AnalyzeResult(counts=counts)
+            summary_status = "queued"
+    return AnalyzeResult(counts=counts, summary_status=summary_status)
 
 
 @router.get("/insights/peak-hours", response_model=PeakHourResponse)
-async def peak_hours(db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+async def peak_hours(db: AsyncSession = Depends(get_db), user=Depends(require_staff)):
     result = await ai_service.peak_hour_summary(db, user.tenant_id)
     return PeakHourResponse(**result)

@@ -5,11 +5,12 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.enums import Role
 from app.core.exceptions import Conflict, NotFound
 from app.infrastructure.db.models.product import Category, Product
 from app.shared.deps import get_current_user, require_admin_or_manager
@@ -25,6 +26,7 @@ class CategoryOut(ORMModel):
 
 
 class CategoryCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)
     parent_id: uuid.UUID | None = None
 
@@ -49,6 +51,7 @@ class ProductOut(ORMModel):
 
 
 class ProductCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     sku: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
@@ -56,30 +59,50 @@ class ProductCreate(BaseModel):
     hsn_code: str | None = None
     category_id: uuid.UUID | None = None
     unit: str = "pcs"
-    pack_size: Decimal = Decimal("1")
-    base_price: Decimal
-    mrp: Decimal | None = None
-    gst_rate: Decimal = Decimal("0")
-    reorder_level: int = 0
-    low_stock_threshold: int = 10
+    pack_size: Decimal = Field(default=Decimal("1"), gt=0)
+    base_price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    mrp: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    gst_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100, max_digits=5, decimal_places=2)
+    reorder_level: int = Field(default=0, ge=0)
+    low_stock_threshold: int = Field(default=10, ge=0)
     image_url: str | None = None
 
 
 class ProductUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str | None = None
     description: str | None = None
     barcode: str | None = None
     hsn_code: str | None = None
     category_id: uuid.UUID | None = None
     unit: str | None = None
-    pack_size: Decimal | None = None
-    base_price: Decimal | None = None
-    mrp: Decimal | None = None
-    gst_rate: Decimal | None = None
-    reorder_level: int | None = None
-    low_stock_threshold: int | None = None
+    pack_size: Decimal | None = Field(default=None, gt=0)
+    base_price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    mrp: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
+    gst_rate: Decimal | None = Field(default=None, ge=0, le=100, max_digits=5, decimal_places=2)
+    reorder_level: int | None = Field(default=None, ge=0)
+    low_stock_threshold: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
     image_url: str | None = None
+
+    @field_validator(
+        "name", "unit", "pack_size", "base_price", "gst_rate", "reorder_level",
+        "low_stock_threshold", "is_active", mode="before",
+    )
+    @classmethod
+    def reject_null_required_fields(cls, value):
+        if value is None:
+            raise ValueError("This product field cannot be null")
+        return value
+
+
+async def _check_category(db: AsyncSession, tenant_id: uuid.UUID, category_id: uuid.UUID | None):
+    if category_id is not None:
+        category = (await db.execute(select(Category.id).where(
+            Category.id == category_id, Category.tenant_id == tenant_id,
+        ))).scalar_one_or_none()
+        if category is None:
+            raise NotFound("Category not found")
 
 
 # Categories
@@ -95,6 +118,7 @@ async def create_category(
     payload: CategoryCreate, db: AsyncSession = Depends(get_db),
     user=Depends(require_admin_or_manager),
 ):
+    await _check_category(db, user.tenant_id, payload.parent_id)
     dup = await db.execute(
         select(Category).where(Category.tenant_id == user.tenant_id, Category.name == payload.name)
     )
@@ -113,13 +137,13 @@ async def list_products(
     q: str | None = None,
     category_id: uuid.UUID | None = None,
     active_only: bool = True,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
     stmt = select(Product).where(Product.tenant_id == user.tenant_id)
-    if active_only:
+    if active_only or user.role == Role.CUSTOMER.value:
         stmt = stmt.where(Product.is_active == True)  # noqa
     if q:
         like = f"%{q.lower()}%"
@@ -142,6 +166,7 @@ async def create_product(
     payload: ProductCreate, db: AsyncSession = Depends(get_db),
     user=Depends(require_admin_or_manager),
 ):
+    await _check_category(db, user.tenant_id, payload.category_id)
     dup = await db.execute(
         select(Product).where(Product.tenant_id == user.tenant_id, Product.sku == payload.sku)
     )
@@ -163,6 +188,8 @@ async def get_product(
     )).scalar_one_or_none()
     if not p:
         raise NotFound("Product not found")
+    if user.role == Role.CUSTOMER.value and not p.is_active:
+        raise NotFound("Product not found")
     return p
 
 
@@ -176,6 +203,8 @@ async def update_product(
     )).scalar_one_or_none()
     if not p:
         raise NotFound("Product not found")
+    if "category_id" in payload.model_fields_set:
+        await _check_category(db, user.tenant_id, payload.category_id)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(p, k, v)
     await db.commit()

@@ -24,7 +24,7 @@ State management: **Riverpod**. Navigation: **go_router**. Offline cache: **Hive
 # 1. Install Flutter 3.16+
 flutter --version
 
-# 2. Backend must be reachable at REACT_APP_BACKEND_URL
+# 2. Configure SUPPLYOS_API_BASE for the backend you operate.
 cd customer_app && flutter run
 cd delivery_app && flutter run
 ```
@@ -32,7 +32,7 @@ cd delivery_app && flutter run
 ## Environment
 Both apps read `SUPPLYOS_API_BASE` from `--dart-define`:
 ```bash
-flutter run --dart-define=SUPPLYOS_API_BASE=https://api.supplyos.example.com/api/v1
+flutter run --dart-define=SUPPLYOS_API_BASE=https://api.your-domain.example/api/v1
 ```
 
 ## Status (this milestone)
@@ -45,5 +45,5 @@ Skeleton generated with:
 
 Screens for catalog / cart / route / OTP / proof are stubbed and will be filled in Milestone 3.
 
-## Not previewable in this container
-Flutter has no runtime in the FastAPI/Node preview environment. To validate, clone the repo locally and run `flutter run`.
+## Backend Connections
+No cloud host or managed preview endpoint is hard-coded. The development fallback is `http://127.0.0.1:8001/api/v1`; a physical device must use your reachable LAN/HTTPS origin, and the standard Android emulator uses `10.0.2.2` to reach the host. Supply `SUPPLYOS_API_BASE` explicitly for your target. Flutter/platform tooling is still required and was not verified by the web preview.
