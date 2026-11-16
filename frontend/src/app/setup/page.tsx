@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { useQuery } from "@tanstack/react-query";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, type FieldErrors, type FieldPath } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -53,7 +53,7 @@ export default function SetupPage() {
   const [blocked, setBlocked] = useState<"initialized" | "unconfigured" | null>(null);
   const mounted = useRef(false);
   const pending = useRef<AbortController | null>(null);
-  const { register, control, trigger, handleSubmit, resetField, getValues, formState: { errors } } = useForm<SetupFields>({
+  const { register, control, trigger, handleSubmit, resetField, getValues, setFocus, formState: { errors } } = useForm<SetupFields>({
     resolver: zodResolver(setupSchema), mode: "onChange",
     defaultValues: {
       company_name: "", legal_name: "", gstin: "", phone: "", email: "", address: "", currency: "INR",
@@ -84,9 +84,29 @@ export default function SetupPage() {
 
   async function nextStep() {
     if (!mounted.current || !canInitialize || pending.current) return;
-    if (await trigger(step === 1 ? [...companyFields] : [...ownerFields])) {
+    if (await trigger(step === 1 ? [...companyFields] : [...ownerFields], { shouldFocus: true })) {
       if (mounted.current) { setError(null); setStep(step + 1); }
+    } else if (mounted.current) {
+      const message = step === 1
+        ? "Some business details need your attention. Review the highlighted fields before continuing."
+        : "Some owner details need your attention. Review the highlighted fields before continuing.";
+      setError(message);
+      toast.error(message, { id: "setup-validation" });
     }
+  }
+
+  function invalidSubmission(invalid: FieldErrors<SetupFields>) {
+    if (!mounted.current || pending.current) return;
+    const company = companyFields.find((name) => invalid[name]);
+    const owner = ownerFields.find((name) => invalid[name]);
+    const next = company ? 1 : owner ? 2 : 3;
+    const field: FieldPath<SetupFields> = company || owner || "warehouses.0.code";
+    const message = "Setup has not been submitted. Review the highlighted fields and try again.";
+    setStep(next);
+    setError(message);
+    toast.error(message, { id: "setup-validation" });
+    // The invalid field can belong to a currently hidden wizard step.
+    requestAnimationFrame(() => { if (mounted.current) setFocus(field); });
   }
 
   async function submit(form: SetupFields) {
@@ -119,11 +139,13 @@ export default function SetupPage() {
       const code = axios.isAxiosError(failure) ? failure.response?.status : undefined;
       if (code === 409) setBlocked("initialized");
       if (code === 503) setBlocked("unconfigured");
-      setError(code === 403 ? "Setup authorization was rejected. Re-enter the operator-provided authorization and password."
+      const message = code === 403 ? "Setup authorization was rejected. Re-enter the operator-provided authorization and password."
         : code === 409 ? "This instance is already initialized. Setup cannot replace existing data."
-        : code === 503 ? "Setup authorization is not configured on the server. Contact the operator."
+        : code === 503 ? "Setup is temporarily unavailable or authorization is not configured. Check instance status before retrying."
         : code === 400 || code === 422 ? "Review the setup fields and password policy. Private inputs have been cleared."
-        : "The setup result could not be confirmed. Check the instance status before trying again.");
+        : "The setup result could not be confirmed. Check the instance status before trying again.";
+      setError(message);
+      toast.error(message, { id: "setup-result" });
       setStep(2);
       void status.refetch();
     } finally {
@@ -163,8 +185,9 @@ export default function SetupPage() {
 
         {status.isFetching || user === undefined ? (
           <div className="space-y-3">
-            <p role="status">Checking instance and session status...</p>
-            {bootstrapError && <button type="button" className="btn-ghost" onClick={() => void bootstrap()}>Retry session check</button>}
+            {bootstrapError ? <p role="alert" data-testid="setup-session-error">The server connection or session could not be verified. Initialization is disabled. The server may be waking up; retry the connection.</p>
+              : <p role="status">Checking instance and session status...</p>}
+            {bootstrapError && <button type="button" className="btn-ghost" onClick={() => { void bootstrap(); void status.refetch(); }}>Retry session check</button>}
           </div>
         ) : status.isError ? (
           <div className="space-y-3" data-testid="setup-status-error">
@@ -184,8 +207,8 @@ export default function SetupPage() {
             <button type="button" className="btn-ghost" onClick={() => { setBlocked(null); void status.refetch(); }}>Check instance status</button>
           </div>
         ) : (
-        <form noValidate onSubmit={(event) => void handleSubmit(submit)(event)} aria-busy={busy} data-testid="setup-form">
-          {error && <p role="alert" className="text-sm text-status-alert mb-4" data-testid="setup-error">{error}</p>}
+        <form noValidate onSubmit={(event) => void handleSubmit(submit, invalidSubmission)(event)} aria-busy={busy} data-testid="setup-form">
+          {error && <p role="alert" aria-live="polite" className="text-sm text-status-alert mb-4" data-testid="setup-error">{error}</p>}
           <fieldset disabled={busy || !canInitialize} className="min-w-0">
           {step === 1 && <div className="space-y-4">
             <div>

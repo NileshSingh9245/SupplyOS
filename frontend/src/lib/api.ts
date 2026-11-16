@@ -11,6 +11,7 @@ export const API_BASE = `${backendUrl.replace(/\/$/, "")}/${apiBase.replace(/^\/
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
+  timeout: 30_000,
 });
 
 interface SessionRequestConfig extends InternalAxiosRequestConfig {

@@ -3,6 +3,55 @@ import {
   deferred, fixtureAuthorization, fixturePassword, fillSetupOwner, mockOnboarding, noStoredSecrets,
 } from "./onboarding-fixtures";
 
+test("invalid business Next explains the blockage and focuses the first invalid field", async ({ page }) => {
+  const state = await mockOnboarding(page, null);
+  await page.goto("/setup");
+  await page.getByTestId("setup-next-1").click();
+  await expect(page.getByTestId("setup-error")).toContainText("business details need your attention");
+  await expect(page.getByTestId("setup-company-name")).toBeFocused();
+  await expect(page.getByTestId("setup-admin-name")).toHaveCount(0);
+  expect(state.calls.some((call) => call.path === "/setup/initialize")).toBe(false);
+});
+
+test("invalid owner Next explains the blockage without exposing private input", async ({ page }) => {
+  const state = await mockOnboarding(page, null);
+  await page.goto("/setup");
+  await page.getByTestId("setup-company-name").fill("Fixture Company");
+  await page.getByTestId("setup-next-1").click();
+  await page.getByTestId("setup-next-2").click();
+  await expect(page.getByTestId("setup-error")).toContainText("owner details need your attention");
+  await expect(page.getByTestId("setup-admin-name")).toBeFocused();
+  await expect(page.getByTestId("setup-warehouse-0")).toHaveCount(0);
+  expect(state.calls.some((call) => call.path === "/setup/initialize")).toBe(false);
+});
+
+test("failed session verification shows an actionable alert rather than endless loading", async ({ page }) => {
+  const state = await mockOnboarding(page, null);
+  state.meStatus = 503;
+  await page.goto("/setup");
+  await expect(page.getByTestId("setup-session-error")).toContainText("Initialization is disabled");
+  await expect(page.getByTestId("setup-form")).toHaveCount(0);
+  await expect(page.getByText("Checking instance and session status...", { exact: true })).toHaveCount(0);
+  state.meStatus = 200;
+  await page.getByRole("button", { name: "Retry session check" }).click();
+  await expect(page.getByTestId("setup-form")).toBeVisible();
+  expect(state.calls.some((call) => call.path === "/setup/initialize")).toBe(false);
+});
+
+test("invalid final submission has a visible summary and focuses the warehouse correction", async ({ page }) => {
+  const state = await mockOnboarding(page, null);
+  await page.goto("/setup");
+  await fillSetupOwner(page);
+  await page.getByTestId("setup-next-2").click();
+  await page.getByTestId("setup-warehouse-add").click();
+  await page.locator("#setup-warehouse-1-code").fill("WH-1");
+  await page.locator("#setup-warehouse-1-name").fill("Duplicate warehouse");
+  await page.getByTestId("setup-finish").click();
+  await expect(page.getByTestId("setup-error")).toContainText("Setup has not been submitted");
+  await expect(page.locator("#setup-warehouse-0-code")).toBeFocused();
+  expect(state.calls.some((call) => call.path === "/setup/initialize")).toBe(false);
+});
+
 test("unconfigured setup is visibly disabled and never initializes", async ({ page }) => {
   const state = await mockOnboarding(page, null);
   state.setup.authorization_configured = false;

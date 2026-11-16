@@ -40,6 +40,10 @@ test.afterEach(() => {
   api.defaults.adapter = originalAdapter;
 });
 
+test("API requests have a finite timeout so unavailable services cannot leave forms pending forever", () => {
+  expect(api.defaults.timeout).toBe(30_000);
+});
+
 test("expired access during bootstrap refreshes once and keeps the staff session", async () => {
   const calls: string[] = [];
   let accessValid = false;
