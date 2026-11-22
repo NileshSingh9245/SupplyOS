@@ -25,8 +25,7 @@ void main() {
     expect(order.amountPaid.text, json['amount_paid']);
     expect(order.amountDue.text, json['amount_due']);
     expect(order.creditHoldAmount.text, json['credit_hold_amount']);
-    expect(formatMoney(order.grandTotal, order.currencyCode),
-        'INR 1234567890123.4567890');
+    expect(formatINR(order.grandTotal), 'INR 1234567890123.4567890');
     expect(order.items.single.quantity.text, '2.000');
     expect(order.items.single.unitPrice.text, '123.4500');
     expect(order.items.single.gstRate.text, '18.000');

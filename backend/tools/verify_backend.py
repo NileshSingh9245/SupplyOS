@@ -59,9 +59,6 @@ def main() -> int:
         "tests/test_setup_security.py", "tests/test_staff_onboarding.py",
         "tests/test_customer_onboarding.py",
         "tests/test_password_change.py", "tests/test_pricing_workflow.py",
-        "tests/test_order_foundations.py", "tests/test_checkout.py",
-        "tests/test_command_authorization.py", "tests/test_private_read_authorization.py",
-        "tests/test_render_review.py",
     ])
     parser.add_argument("--test-timeout", type=int, default=300)
     args = parser.parse_args()

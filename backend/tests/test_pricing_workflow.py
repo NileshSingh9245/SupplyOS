@@ -110,33 +110,6 @@ def test_catalog_page_search_and_query_authority_are_bounded(pricing_case):
     assert requests.get(f"{case.api}/catalog", timeout=10).status_code == 401
 
 
-def test_effective_product_detail_and_category_filter_do_not_publish_base_price_or_foreign_scope(pricing_case):
-    case = pricing_case
-    category = checked(case.roles["super_admin"].post(f"{case.api}/products/categories", json={
-        "name": "owned-detail-" + uuid.uuid4().hex[:16],
-    }, timeout=15), 201)
-    product = case.products[0]
-    checked(case.roles["super_admin"].patch(f"{case.api}/products/{product['id']}", json={
-        "category_id": category["id"], "description": "Owned effective catalog detail",
-        "hsn_code": "1006", "barcode": "OWNED-DETAIL",
-    }, timeout=15))
-    checked(override(case, product, "12.00"))
-    result = checked(catalog(case, category_id=category["id"]))
-    assert result["total"] == 1 and result["items"][0]["id"] == product["id"]
-    assert result["items"][0]["price"] == "12.00"
-    detail = case.roles["customer"].get(f"{case.api}/catalog/{product['id']}", timeout=15)
-    body = checked(detail)
-    assert detail.headers["cache-control"] == "no-store" and "base_price" not in body
-    assert body["price"] == "12.00" and body["currency_code"] == "INR" and body["category_id"] == category["id"]
-    assert body["description"] == "Owned effective catalog detail" and body["hsn_code"] == "1006"
-    assert catalog(case, category_id=str(uuid.uuid4())).status_code == 404
-    assert case.roles["customer"].get(f"{case.api}/catalog/{uuid.uuid4()}", timeout=15).status_code == 404
-    assert case.roles["customer"].get(f"{case.api}/catalog/{product['id']}?price=0", timeout=15).status_code == 422
-    for role in ("super_admin", "warehouse_manager", "accountant", "delivery_partner"):
-        assert case.roles[role].get(f"{case.api}/catalog/{product['id']}", timeout=15).status_code == 403
-    assert requests.get(f"{case.api}/catalog/{product['id']}", timeout=15).status_code == 401
-
-
 def test_zero_override_has_priority_and_removal_returns_to_tier_then_base(pricing_case):
     case = pricing_case
     checked(assign(case, case.tier["id"], role="accountant"))

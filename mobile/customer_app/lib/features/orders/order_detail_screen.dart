@@ -56,41 +56,18 @@ class OrderDetailScreen extends ConsumerWidget {
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Text(statusLabel(value.status)),
-              const SizedBox(height: 12),
-              Wrap(spacing: 12, runSpacing: 8, children: [
-                OutlinedButton.icon(
-                  onPressed: () => context.go('/orders/${value.id}/tracking'),
-                  icon: const Icon(Icons.local_shipping_outlined),
-                  label: const Text('Track delivery'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      context.go('/account/payments?order_id=${value.id}'),
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Recorded payments'),
-                ),
-              ]),
               const SizedBox(height: 20),
               _Field('Order ID', value.id),
               _Field('Channel', value.channel),
               _Field('Payment mode', value.paymentMode),
               _Field('Payment status', statusLabel(value.paymentStatus)),
-              _Field('Currency',
-                  value.currencyCode ?? 'Not recorded for this order'),
-              _Field(
-                  'Subtotal', formatMoney(value.subtotal, value.currencyCode)),
-              _Field(
-                  'Tax total', formatMoney(value.taxTotal, value.currencyCode)),
-              _Field('Discount total',
-                  formatMoney(value.discountTotal, value.currencyCode)),
-              _Field('Grand total',
-                  formatMoney(value.grandTotal, value.currencyCode)),
-              _Field('Amount paid',
-                  formatMoney(value.amountPaid, value.currencyCode)),
-              _Field('Amount due',
-                  formatMoney(value.amountDue, value.currencyCode)),
-              _Field('Credit hold',
-                  formatMoney(value.creditHoldAmount, value.currencyCode)),
+              _Field('Subtotal', formatINR(value.subtotal)),
+              _Field('Tax total', formatINR(value.taxTotal)),
+              _Field('Discount total', formatINR(value.discountTotal)),
+              _Field('Grand total', formatINR(value.grandTotal)),
+              _Field('Amount paid', formatINR(value.amountPaid)),
+              _Field('Amount due', formatINR(value.amountDue)),
+              _Field('Credit hold', formatINR(value.creditHoldAmount)),
               _Field('Scheduled delivery',
                   formatDate(value.scheduledDeliveryDate)),
               _Field(
@@ -108,8 +85,7 @@ class OrderDetailScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text('No items in the server response.'),
                 ),
-              for (final item in value.items)
-                _OrderItemView(item, value.currencyCode),
+              for (final item in value.items) _OrderItemView(item),
               const Divider(height: 32),
               Text('History / oldest first',
                   style: Theme.of(context).textTheme.titleLarge),
@@ -183,10 +159,9 @@ class _Field extends StatelessWidget {
 }
 
 class _OrderItemView extends StatelessWidget {
-  const _OrderItemView(this.item, this.currencyCode);
+  const _OrderItemView(this.item);
 
   final OrderItem item;
-  final String? currencyCode;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -196,12 +171,11 @@ class _OrderItemView extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium),
           Text('SKU: ${item.productSku}'),
           Text('Quantity: ${item.quantity}'),
-          Text('Unit price: ${formatMoney(item.unitPrice, currencyCode)}'),
+          Text('Unit price: ${formatINR(item.unitPrice)}'),
           Text('GST rate: ${item.gstRate}'),
-          Text(
-              'Line subtotal: ${formatMoney(item.lineSubtotal, currencyCode)}'),
-          Text('Line tax: ${formatMoney(item.lineTax, currencyCode)}'),
-          Text('Line total: ${formatMoney(item.lineTotal, currencyCode)}'),
+          Text('Line subtotal: ${formatINR(item.lineSubtotal)}'),
+          Text('Line tax: ${formatINR(item.lineTax)}'),
+          Text('Line total: ${formatINR(item.lineTotal)}'),
         ]),
       );
 }

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import Conflict, DomainError, NotFound
 from app.features.pricing import repositories
-from app.features.pricing.schemas import CatalogDetail, CatalogProduct, ResolvedProduct, TierCreate, TierUpdate
+from app.features.pricing.schemas import CatalogProduct, ResolvedProduct, TierCreate, TierUpdate
 from app.infrastructure.db.models.customer import PriceTier
 from app.infrastructure.db.models.user import User
 from app.shared.audit import audit
@@ -64,38 +64,19 @@ async def resolve_price(
 
 
 async def catalog(db: AsyncSession, *, tenant_id: uuid.UUID, customer_id: uuid.UUID,
-                  q: str | None, page: int, page_size: int,
-                  category_id: uuid.UUID | None = None) -> Paginated[CatalogProduct]:
+                  q: str | None, page: int, page_size: int) -> Paginated[CatalogProduct]:
     if not await repositories.active_customer(db, tenant_id, customer_id):
         raise NotFound("Customer catalog is unavailable")
     currency = await repositories.currency(db, tenant_id)
     if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
         raise Conflict("Customer catalog currency needs reviewed settings")
-    if category_id is not None and not await repositories.category_exists(db, tenant_id, category_id):
-        raise NotFound("Catalog category not found")
-    total = await repositories.product_count(db, tenant_id, q, category_id)
+    total = await repositories.product_count(db, tenant_id, q)
     rows = await repositories.priced_rows(
         db, tenant_id=tenant_id, customer_id=customer_id, q=q,
         offset=(page - 1) * page_size, limit=page_size,
-        category_id=category_id,
     )
     return Paginated(items=[CatalogProduct(**_resolved(row).model_dump(), currency_code=currency) for row in rows],
                      total=total, page=page, page_size=page_size)
-
-
-async def catalog_detail(db: AsyncSession, *, tenant_id: uuid.UUID, customer_id: uuid.UUID,
-                         product_id: uuid.UUID) -> CatalogDetail:
-    if not await repositories.active_customer(db, tenant_id, customer_id):
-        raise NotFound("Customer catalog is unavailable")
-    currency = await repositories.currency(db, tenant_id)
-    if not isinstance(currency, str) or not re.fullmatch(r"[A-Z]{3}", currency):
-        raise Conflict("Customer catalog currency needs reviewed settings")
-    rows = await repositories.priced_rows(db, tenant_id=tenant_id, customer_id=customer_id, product_ids={product_id})
-    if len(rows) != 1:
-        raise NotFound("Catalog product not found")
-    row = rows[0]
-    return CatalogDetail(**_resolved(row).model_dump(), currency_code=currency, description=row.description,
-                         category_id=row.category_id, barcode=row.barcode, hsn_code=row.hsn_code, image_url=row.image_url)
 
 
 async def create_tier(db: AsyncSession, actor: User, payload: TierCreate) -> PriceTier:

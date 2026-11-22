@@ -70,7 +70,7 @@ export function PaymentForm({ open, customers, onClose, onDone }: {
     <Modal open={open} busy={mutation.busy} onClose={onClose} labelledBy="payment-title" testId="pay-modal">
       <h2 id="payment-title" className="font-display text-2xl font-bold mb-4">Record payment</h2>
       <form onSubmit={handleSubmit(submit)} onChange={mutation.payloadChanged}>
-        <fieldset disabled={mutation.busy || mutation.unconfirmed} className="space-y-4">
+        <fieldset disabled={mutation.busy} className="space-y-4">
           <div>
             <label className="data-label" htmlFor="pay-customer">Customer</label>
             <select id="pay-customer" className="input mt-1" data-testid="pay-customer" {...register("customer_id", {
@@ -125,7 +125,7 @@ export function PaymentForm({ open, customers, onClose, onDone }: {
           </div>
         </fieldset>
         {mutation.error && <p role="alert" className="mt-3" data-testid="pay-error">{mutation.error}</p>}
-        {mutation.unconfirmed && <p role="status" className="text-sm mt-2" data-testid="pay-unconfirmed">Result unconfirmed. Fields are locked. Retry the unchanged original request to recover safely with the same key; do not record or collect this payment again.</p>}
+        {mutation.unconfirmed && <p role="status" className="text-sm mt-2" data-testid="pay-unconfirmed">Result unconfirmed. Retry unchanged to recover safely with the same request key. Changing fields starts a new payment intent.</p>}
         <div className="flex flex-wrap justify-end gap-2 mt-5">
           <button type="button" className="btn-ghost" disabled={mutation.busy} onClick={onClose} data-testid="pay-close">Close</button>
           <button type="submit" className="btn-volt" disabled={mutation.busy || !isValid || (!!orderId && !order)} data-testid="pay-submit">{mutation.busy ? "Saving..." : mutation.unconfirmed ? "Retry payment" : "Record payment"}</button>

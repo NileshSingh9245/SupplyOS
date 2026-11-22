@@ -296,22 +296,20 @@ def test_hosted_upload_and_read_commit_exact_provenance_without_local_fallback(c
 @pytest.mark.parametrize("change", ["inactive", "revoked", "version", "role", "expired"])
 def test_auth_changes_committed_during_final_lock_wait_refuse_the_receipt(case, change):
     create = case.store.create
-    uploaded, release = threading.Event(), threading.Event()
+    uploaded = threading.Event()
 
     async def observed(operation, data):
         stored = await create(operation, data)
         uploaded.set()
-        assert await asyncio.to_thread(release.wait, 10)
         return stored
 
     case.store.create = observed
     with case.engine.connect() as holder, ThreadPoolExecutor(max_workers=1) as workers:
+        holder.execute(select(User.id).where(User.id == case.user_id).with_for_update())
+        pid = holder.scalar(text("SELECT pg_backend_pid()"))
         result = workers.submit(lambda: asyncio.run(case.upload()))
         try:
             assert uploaded.wait(timeout=10)
-            holder.execute(select(User.id).where(User.id == case.user_id).with_for_update())
-            pid = holder.scalar(text("SELECT pg_backend_pid()"))
-            release.set()
             deadline = time.monotonic() + 5
             waiting = False
             while time.monotonic() < deadline:
@@ -340,7 +338,6 @@ def test_auth_changes_committed_during_final_lock_wait_refuse_the_receipt(case, 
             holder.commit()
             assert result.result(timeout=15).status_code == 401
         finally:
-            release.set()
             holder.rollback()
     operations, proofs = rows(case)
     assert len(operations) == 1 and operations[0].state == "reserved" and not proofs
@@ -364,29 +361,6 @@ def test_invalid_journal_is_rejected_before_any_storage_read(case):
 
     case.store.read = forbidden_read
     assert asyncio.run(case.read(response.json()["url"])).status_code == 409
-
-
-def test_changed_reserved_journal_after_io_cannot_publish_a_different_receipt_or_delete_bytes(case):
-    create = case.store.create
-    original_key = None
-
-    async def changed(operation, data):
-        nonlocal original_key
-        stored = await create(operation, data)
-        original_key = operation.object_key
-        with Session(case.engine) as db:
-            db.execute(update(ProofUploadOperation).where(
-                ProofUploadOperation.id == operation.id,
-            ).values(object_key=f"{uuid.uuid4().hex}.png"))
-            db.commit()
-        return stored
-
-    case.store.create = changed
-    assert asyncio.run(case.upload()).status_code == 409
-    operations, proofs = rows(case)
-    assert len(operations) == 1 and operations[0].state == "reserved" and not proofs
-    assert original_key is not None and operations[0].object_key != original_key
-    assert read_private_file(case.store.settings.proof_storage_dir, original_key, limit=len(png())) == png()
 
 
 def test_public_data_api_roles_cannot_access_the_private_journal(case):

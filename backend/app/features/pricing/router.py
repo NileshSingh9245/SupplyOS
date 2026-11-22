@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.enums import Role
 from app.core.exceptions import DomainError, Forbidden, NotFound
 from app.features.pricing import repositories, service
-from app.features.pricing.schemas import CatalogDetail, CatalogProduct, TierCreate, TierOut, TierUpdate
+from app.features.pricing.schemas import CatalogProduct, TierCreate, TierOut, TierUpdate
 from app.shared.deps import get_current_user, lock_current_user, require_admin_or_manager, require_roles, require_staff
 from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import Paginated
@@ -76,29 +76,14 @@ async def resolve(
 async def customer_catalog(
     request: Request, q: str | None = Query(None, max_length=100),
     page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
-    category_id: uuid.UUID | None = Query(None),
     db: AsyncSession = Depends(get_db), user=Depends(require_roles(Role.CUSTOMER)),
 ):
-    allowed = {"q", "page", "page_size", "category_id"}
+    allowed = {"q", "page", "page_size"}
     if set(request.query_params) - allowed or any(len(request.query_params.getlist(key)) > 1 for key in allowed):
         raise DomainError("Unsupported catalog query parameters", code=422)
     if user.customer_id is None:
         raise Forbidden("No customer profile linked")
     result = await service.catalog(db, tenant_id=user.tenant_id, customer_id=user.customer_id,
-                                   q=q, page=page, page_size=page_size, category_id=category_id)
-    await get_current_user(request, db)
-    return result
-
-
-@catalog_router.get("/{product_id}", response_model=CatalogDetail)
-async def customer_product(product_id: uuid.UUID, request: Request,
-                           db: AsyncSession = Depends(get_db), user=Depends(require_roles(Role.CUSTOMER))):
-    if request.query_params:
-        raise DomainError("Unsupported product detail query parameters", code=422)
-    actor = await lock_current_user(request, db)
-    if actor.role != Role.CUSTOMER.value or actor.customer_id is None:
-        raise Forbidden("No active customer profile linked")
-    result = await service.catalog_detail(db, tenant_id=actor.tenant_id, customer_id=actor.customer_id,
-                                          product_id=product_id)
+                                   q=q, page=page, page_size=page_size)
     await get_current_user(request, db)
     return result

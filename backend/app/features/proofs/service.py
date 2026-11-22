@@ -7,8 +7,7 @@ import warnings
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import Conflict, DomainError, NotFound
-from app.infrastructure.db.models.order import Delivery, Order
+from app.core.exceptions import Conflict, DomainError
 from app.infrastructure.db.models.proof import DeliveryProof, ProofUploadOperation
 from app.infrastructure.storage.contracts import StorageIntegrityError, StorageUnavailable
 from app.infrastructure.storage.proof_store import ProofStore, get_proof_store
@@ -38,28 +37,11 @@ def validate_image(data: bytes) -> tuple[str, str]:
     return ("image/png", "png") if format_name == "PNG" else ("image/jpeg", "jpg")
 
 
-async def lock_delivery_order(
-    db: AsyncSession, *, tenant_id: uuid.UUID, delivery_id: uuid.UUID,
-) -> Order:
-    """Protect parent state before Delivery without reversing financial locks."""
-    order_id = (await db.execute(select(Delivery.order_id).where(
-        Delivery.id == delivery_id, Delivery.tenant_id == tenant_id,
-    ))).scalar_one_or_none()
-    if order_id is None:
-        raise NotFound("Delivery not found")
-    order = (await db.execute(select(Order).where(
-        Order.id == order_id, Order.tenant_id == tenant_id,
-    ).with_for_update(key_share=True).execution_options(populate_existing=True))).scalar_one_or_none()
-    if order is None:
-        raise NotFound("Delivery not found")
-    return order
-
-
-async def validate_proof_ownership(
-    db: AsyncSession, proof: DeliveryProof, *, lock: bool = False,
-) -> None:
+async def read_stored_proof(
+    db: AsyncSession, proof: DeliveryProof, *, store: ProofStore | None = None,
+) -> bytes:
     if proof.upload_operation_id is not None:
-        statement = select(ProofUploadOperation).where(
+        operation = (await db.execute(select(ProofUploadOperation).where(
             ProofUploadOperation.id == proof.upload_operation_id,
             ProofUploadOperation.tenant_id == proof.tenant_id,
             ProofUploadOperation.delivery_id == proof.delivery_id,
@@ -73,18 +55,9 @@ async def validate_proof_ownership(
             ProofUploadOperation.storage_origin == proof.storage_origin,
             ProofUploadOperation.storage_bucket == proof.storage_bucket,
             ProofUploadOperation.state == "committed",
-        )
-        if lock:
-            statement = statement.with_for_update(read=True)
-        operation = (await db.execute(statement)).scalar_one_or_none()
+        ))).scalar_one_or_none()
         if operation is None:
             raise Conflict("Proof upload ownership is invalid")
-
-
-async def read_stored_proof(
-    db: AsyncSession, proof: DeliveryProof, *, store: ProofStore | None = None,
-) -> bytes:
-    await validate_proof_ownership(db, proof)
     try:
         return await (store or get_proof_store()).read(proof)
     except (StorageIntegrityError, StorageUnavailable):

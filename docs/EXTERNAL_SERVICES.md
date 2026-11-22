@@ -2,28 +2,6 @@
 
 This guide explains what SupplyOS needs outside its own code, where to configure it, and what is still being built. It is for someone setting up the project for the first time.
 
-## User-Authorized Review Accounts - 2026-11-16 UTC
-
-The user requested working temporary logins for already-installed review APKs. Existing supported APIs initialized one fictional review business and created separate customer/delivery-partner accounts without changing authorization, hashing, verification or session rules. Live login, matching authenticated identity and actual APK read endpoints pass. No reinstall is required; this supersedes the older uninitialized status below.
-
-The catalog contains two products; the customer has two server-priced cash orders, one pending and one dispatched with six history entries. One incomplete delivery is assigned for2026-11-16 UTC. Its date-filtered route must be reassigned through the supported API for another UTC day. OTP/proof/payment completion and unfinished native features are not synthesized.
-
-An ignored workspace-local `.runtime/provision_review_accounts.py` operator recovers temporary passwords from DPAPI CurrentUser ciphertext stored with protected Windows ACLs. The private operator owner's password and all provider/configuration secrets remain undisclosed; only the user-authorized synthetic APK login details are delivered to the requesting user. Passwords are not embedded in APKs, repository documentation or application defaults. This exception does not generate/share final passwords for real customers/staff. Free limits and the14-December database expiry remain.
-
-## Verified Free Review - 2026-11-15 UTC
-
-- Web: https://supplyos-client-review-web.onrender.com. API: https://supplyos-client-review-api.onrender.com. Dedicated Docker services, PostgreSQL15 and Key Value are Free, same-region Singapore resources; unrelated applications were not modified.
-- API/web deploy the audited core `ff50596ee1372ea2e876582d3b9b4bde8902a37e`. Core CI succeeded at https://github.com/NileshSingh9245/SupplyOS/actions/runs/43496634496. These are independently hosted services, not a PC tunnel or localhost substitution.
-- Explicit Alembic migration of the empty dedicated database reached `20261112_0006`. The external connection used `verify-full` with a trusted CA bundle and hostname verification, a temporary public IPv4 `/32`, bounded owned subprocesses and cleanup restoring `ipAllowList: []`. Current external access is deny-all; internal application connections remain available. Startup still checks the canonical schema and never runs DDL.
-- Direct API and same-origin web-proxy `/api/health/deep` report PostgreSQL/Redis `ok`. Private401 responses preserve no-store, HSTS, nosniff and request IDs; untrusted browser mutation provenance is rejected403. Desktop/mobile setup and login pages navigate without page errors or horizontal overflow.
-- Both dedicated signed Android review APKs are built and installed on the isolated API35 emulator via ADB5038. Each application's nonexistent-account sign-in reached the hosted HTTPS API and returned401, displayed a safe failure and cleared its password. Production signing remains held; real-role/business acceptance remains pending.
-- First-owner initialization is deliberately pending. `/setup` requires the operator's privately configured authorization and the owner's privately entered final password. No test business, shared login or generated client password was seeded. Do not paste credentials into chat or initialize an existing dataset.
-- Review limits were explicitly accepted for synthetic data only. Free web services sleep/cold-start; a cold-start503 was observed and recovered without bypassing startup guards. The free database expires `2026-12-14T17:50:33.056619Z`, has no free backups, Key Value persistence is off and `/app/.runtime/review-proofs` is ephemeral. This is not production proof retention or data durability.
-- No paid compute/volume, trial, SMTP/AI activation or keep-awake workaround was enabled. Shared free build/bandwidth/hour quotas and account billing controls still apply; this checkpoint is not an invoice or universal spending-cap attestation.
-- `backend/tools/render_review.py` is a workspace-local, Windows/private-storage operator helper scoped to the discovered review resources and pinned publication clone. Its live API actions require the already-installed operator-only PyYAML parser; the application requirements and offline guard tests do not. Do not rerun `create-*`, overwrite saved secrets, print CLI/private configuration, or change unrelated plans. These latest operational edits are not a new deployed core revision.
-
-The dated local checkpoint below remains historical regression evidence, not a fresh full-suite run or a production certificate.
-
 Onboarding checkpoint: 2026-11-12. Full owned backend **954 passed/3 skipped in363.06s**, frontend **165 dev/165 production**, lint/types and **20-page build**. Earlier102 UI cases remain plus63 onboarding cases. These checks are not live hosting/provider certification; private bootstrap/staff/intake is implemented, but email/OTP/invitations remain unconnected.
 
 ## Private Initial Setup and Account Intake
@@ -44,7 +22,7 @@ The client application must run on independently hosted web/API, PostgreSQL and 
 
 The candidate providers have real limits: [Vercel Hobby](https://vercel.com/docs/plans/hobby) is non-commercial and the available scope is Hobby, so it is not selected for this business deployment. [Render Free](https://render.com/docs/free) sleeps after 15 idle minutes, can take about a minute to resume, loses local files on restart/spindown, expires free PostgreSQL after 30 days and blocks SMTP ports 25/465/587. [Supabase Free](https://supabase.com/pricing) has database/storage/egress quotas and inactivity pauses. None is represented as unlimited or production-quality parity; no upgrade, paid plan or keep-awake circumvention is authorized.
 
-Production proof storage must preserve authenticated first-party URLs, tenant/delivery/kind binding and exact-byte size/MIME/hash checks; public buckets or ephemeral Render files are not replacements. The current explicitly limited synthetic review uses ephemeral files without claiming that gate passed. Switching a storage setting without copying/verifying existing receipts is unsafe. Android signing stays private, and localhost/placeholder/unverified signing is not acceptable. Signed review APKs are verified; production durability and authenticated functional distribution remain held.
+Hosted proof storage must preserve authenticated first-party URLs, tenant/delivery/kind binding and exact-byte size/MIME/hash checks; public buckets or ephemeral Render files are not replacements. Switching a storage setting without copying/verifying existing receipts is unsafe. Android release signing must stay private/reproducible, and an APK with localhost, a placeholder API or an unverified signing setup is not client-ready. Cloud release and functional APK distribution remain on hold until these gates pass.
 
 ## Start Here
 
@@ -56,7 +34,7 @@ You do not need to buy an AI, S3 storage, maps, messaging, or payment subscripti
 4. Connect the admin web app using its same-origin proxy (`BACKEND_URL` on the frontend server), then check API/database/Redis health.
 5. Test the existing core workflows with a fresh test business. Add an optional service only when its connector is implemented and you need that feature.
 
-**Important:** service setup does not complete missing application features. The customer app has login, effective-price catalog and read-only order/detail/history views; cart/checkout remains incomplete. The delivery app has login and a read-only assigned-delivery list; proof capture, collections, navigation, and offline synchronization are not complete mobile workflows.
+**Important:** service setup does not complete missing application features. The customer app currently has login and a catalog; its orders screen is a placeholder. The delivery app has login and an assigned-delivery list; proof capture, collections, navigation, and offline synchronization are not complete mobile workflows.
 
 ### Fastest Local Look: Temporary Preview
 
@@ -109,7 +87,7 @@ Admin web app / Customer app / Delivery app
 | --- | --- | --- | --- |
 | PostgreSQL | Yes | Stores business data and provides database transactions. | Real migrations and a startup revision/schema guard are present; fresh and matching legacy schemas have local PostgreSQL coverage. Your own provider/database still needs configuration and validation. |
 | Redis | Required by current backend configuration and before enabled email recovery | Health checks and opt-in password-reset throttling; future cache/jobs/realtime. | Fixed-window HMAC identity/IP counters and cooldown are implemented for recovery. Native Redis/Lua and general queues/sliding-window/realtime remain unverified or pending. |
-| App hosting, domain, and HTTPS | Only for production or remote access | Makes the backend/web app reachable securely. | Dedicated free review API/web are verified above; production and complete business acceptance remain separate. |
+| App hosting, domain, and HTTPS | Only for production or remote access | Makes the backend/web app reachable securely. | No new deployment or live domain is established by this guide. |
 | Claude/AI | No | Produces optional summaries of aggregated business metrics. | Direct Anthropic Messages API uses the core HTTP client and an owner-supplied key. Mocked transport checks are not live account verification. |
 | SMTP/email | No for basic local flows; needed before offering real email recovery | Sends private reset links for existing accounts. | Real opt-in SMTP adapter, bounded background work, recipient recheck, and public recovery UI are implemented. Disabled/unavailable transport returns `503`; live relay/sender verification and durable delivery remain pending. |
 | Private local proof files | Yes when completing deliveries; no external account needed | Stores delivery signatures/photos on the backend's private filesystem. | Authenticated upload/read, image checks, delivery-bound receipts, and Windows private ACL enforcement are implemented. Production durability/permissions still need verification. |
@@ -119,7 +97,7 @@ Admin web app / Customer app / Delivery app
 | WhatsApp Business | No | Receives orders or sends approved business messages. | An order channel label exists; a WhatsApp connector does not. |
 | Voice transcription | No | Turns recorded speech into text for review. | Audio upload, transcription, and voice-to-order integration are pending. |
 
-Optional does not mean unimportant: real email recovery, production-ready proof storage, and an approved way to deliver OTPs are needed before advertising those complete workflows to customers. Named staff/delivery-partner provisioning exists; OTP messaging remains unconnected.
+Optional does not mean unimportant: real email recovery, production-ready proof storage, and an approved way to deliver OTPs are needed before advertising those complete workflows to customers. Staff/delivery-partner provisioning and OTP messaging are not connected yet.
 
 ## Choose a Development Setup
 
@@ -214,7 +192,7 @@ For hosted/production databases, require TLS and prefer certificate/hostname ver
 
 Prefer a direct database connection for migrations. Transaction-pooling endpoints may need special asyncpg/prepared-statement handling; they are not automatically interchangeable. Check the provider's connection limits against SQLAlchemy's pool and the number of backend processes.
 
-**Migration requirement:** run online `alembic upgrade head` before the API. Current head is `20261112_0006`, after the real baseline, auth sessions, canonical stock, financial `0004`, proof `0005` and upload-journal `0006` revisions. Startup checks revision/tables/columns and never creates tables implicitly.
+**Migration requirement:** run online `alembic upgrade head` before the API. Current head is `20261109_0005`, after the real baseline, auth sessions, canonical stock, and financial `0004` revisions. Startup checks revision/tables/columns and never creates tables implicitly.
 
 The baseline refuses mismatched legacy schemas. Financial `0004` additionally requires every historical receipt to have exactly one valid credit attribution: an owned payment reference or a verifiable legacy delivery-payment group. Orphans, duplicate/phantom credits, mismatched amounts, and ambiguous history stop for reviewed reconciliation; original money/history is not rewritten. Stop old writers and arrange backups/maintenance before adopting a real legacy database.
 

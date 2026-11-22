@@ -1,71 +1,6 @@
 # ROADMAP - SupplyOS
 
-## Three-Application Completion Contract - 2026-11-16
-
-The required experience is three integrated applications: a real Admin application with the web admin's feature/UI parity, a customer application that can place and manage orders, and a delivery application that can execute its assignments. Earlier signed login/read-only review APKs do not satisfy this contract. Historical checkpoints below are evidence, not a completion certificate.
-
-### Feature and Acceptance Matrix
-
-`Partial` means an existing implementation has explicit gaps. `Missing` is not implemented. `Local verified` is not live verification. Every row needs tenant/role/session isolation, visible loading/error/retry/empty states, mobile accessibility and real cross-app acceptance before it is marked complete.
-
-| Workflow | Shared backend / web state | Admin application | Customer application | Delivery application | Required acceptance |
-|---|---|---|---|---|---|
-| First launch, sign-in and actionable errors | Web feedback repair published/deployed2fa2866 and CI/live-UI verified | New native work in progress, not yet accepted | Exact-role sign-in exists | Exact-role sign-in exists | Invalid Next focuses/explains; network failure is bounded/retryable; existing business is not overwritten; all three role sessions work live |
-| Administrative navigation and business parity | Web modules exist with mixed completeness | Missing, required third client; no placeholder/WebView shortcut | Customer-only navigation | Partner-only navigation | Every implemented web action has an equivalent authorized Admin action and responsive UI |
-| Staff/customer access and warehouse association | Named staff/customer intake and revocation exist; association/profile linking incomplete | Missing | Own linked profile only | Assigned active partner only | S9 and cross-account cache/session revocation; never generate real-person passwords or relax permissions |
-| Products, categories and effective pricing | Effective detail/category filtering and immutable new-order currency source verified locally, not deployed | Native implementation in progress | Complete browse/detail/filter implementation in progress | Delivery item reads incomplete | S5 prices come from one authoritative server snapshot; no base-price guesses or client pricing rules |
-| Warehouse, location and stock operations | Basic warehouses/racks/shelves/adjustments/movements; transfer/return/damage/expiry incomplete | Missing | Privacy-safe fulfillment availability missing | Pickup/fulfillment context incomplete | S1/S6/S7/S12; active warehouse eligibility, canonical stock locks, audited corrections, no oversell |
-| Cart, quote and checkout | Additive server quote/atomic reserved checkout locally verified, not deployed; v1 pending behavior preserved | Creation/fulfillment actions require parity | Cart/quote/checkout implementation in progress | Not an order creator | Additive atomic checkout; S1 concurrency, S2 credit, safe uncertainty/replay, exact server totals and clear shortages |
-| Order lists, detail and lifecycle | Legacy/manual lifecycle and own order/history reads exist | Missing | Read-only lists/detail/history exist; creation/tracking incomplete | Scoped order reads exist, UI/detail incomplete | Create in customer app, observe/fulfill in Admin, assign/execute in partner app, see current result in customer app |
-| Warehouse choice and partial/backorders | Settings advertise policies that services do not yet consume | Missing | Missing server fulfillment choices | Missing split/pickup representation | S6/S7 explicit persisted policy/links/holds; settings alone do not implement behavior |
-| Assigned delivery detail and route | Date-filtered skeleton list; rich detail and assignment UI incomplete | Missing | Delivery tracking incomplete | Read-only list, no execution | Assigned partner gets safe customer/address/items/due/context; reassignment/revocation is enforced; genuine date-aware route |
-| Customer confirmation / OTP / QR | Real OTP generation/operator verify exists; customer challenge/transport missing | Missing | Missing private customer confirmation | Missing verification UI/QR binding | S3; genuine customer-controlled verification, no OTP leakage to partner/QR or fabricated verification |
-| Signature/photo proof and completion | Private proof journal/finalizer exists; remaining financial/session rechecks need hardening | Missing | Own resulting delivery status | Missing capture/upload/complete | Exact-byte private receipts and both proof kinds; immutable completion, current assignment/role, no unsafe cleanup/replay |
-| Collections, due and finance | Web original-body/key freeze verified220dev/220prod; authoritative outcome lookup/full accounting still pending | Native implementation in progress | Own receipts/credit/history implementation in progress | Missing cash/UPI capture | S2/S3/S8; server due/allocation, no fake gateway settlement or body-edited new payment after an unknown result |
-| Invoices, statements, refunds and audit | Invoices/identity/currency snapshots and full read/closeout APIs missing/partial | Missing | Missing immutable own documents | Own operational receipt view incomplete | Persist provenance/snapshots; historical amounts are not repriced or inferred from mutable records; S8 |
-| Analytics, settings, attendance and alerts | Mixed stubs/basic views; many advertised settings do not affect use cases | Missing | Effective own preferences incomplete | Effective route/preferences incomplete | Real persisted typed data, role-gated controls, server-consumed policy and honest unavailable capabilities |
-| Reservation expiry, durable jobs and restore | Missing/incomplete; Free storage/uptime is not production durability | Status/exception visibility missing | Expiry notification missing | Assignment/expiry synchronization missing | S4/S11/S12; real release/history/jobs with verified scheduling and recovery, no keep-awake workaround |
-| AI and optional integrations | Genuine rule checks; approved generative/mail/other transports remain held | Missing parity | Optional features only if implemented/approved | Optional optimization only if implemented/approved | S10 quality/privacy/cost approval; held provider is not a fake summary or feature-complete substitute |
-| Realtime and offline synchronization | No mounted event fan-out; durable mobile mutation/intent protocol missing | Missing | Missing cross-device mutation sync | Missing encrypted offline intent/sync | Current auth/tenant/assignment barriers; endpoint-specific statuses/headers, exact retained uncertain intents, no stale replay |
-| Signed installation and full acceptance | Earlier two read-only review builds verified only for their limited scope | No Admin APK | Full replacement not built | Full replacement not built | Three actual signed applications, full role workflows on real backend plus desktop/mobile/native and failure/concurrency checks |
-
-### Implementation Order and Evidence Gates
-
-1. Web feedback repair released as2fa286686d37f06b41af99f6b12ce61247fe6fcc, CI43858732760 green;213 development/213 production, lint/types/build and deployed desktop/mobile feedback checks pass. Existing review setup/data was not replaced. Later financial intent safety passes220 development/220 production but is not yet released.
-2. Stabilize shared typed mutation/intent/session contracts and privacy-safe backend checkout, delivery detail/confirmation, invoice/audit and event boundaries before dependent screens. Keep existing v1 semantics for persisted/external consumers; no UI-only transaction chain pretending to be atomic checkout.
-3. Implement customer ordering and genuine partner execution alongside a native Admin client using the same server authority. Administrative feature parity is a real third client requirement; no shallow wrapper or static demo substitute.
-4. Complete server-consumed operational policies, accounting/documents, cross-app events and durable encrypted offline/recovery behavior; validate S1-S12 under concurrency/revocation/uncertainty. External fee/provider/durability approval gates stay explicit.
-5. Verify full cross-role journeys, rollout and three rebuilt/signed APKs. Test counts, fixtures, login success or read-only seeded lists alone never mark these rows complete.
-
-### Current Web Repair Evidence
-
-- Invalid business/owner Next now produces an accessible summary/toast and focuses the invalid field; final validation returns to the required wizard step and focuses correction.
-- Session verification failure is a visible retryable alert, not endless loading. HTTP requests have a30-second default deadline; uncertain mutations are not automatically replayed or called successful.
-- The live review instance is already initialized and shows Sign in, not a writable first-launch form. Its data must not be reset to reproduce a new-business wizard. The user's exact stuck instance may require separate live diagnosis.
-- Root original index remains protected with `git --no-optional-locks`; the four-file release used only the isolated publication clone. Test-generated includes are removed only for this repair's owned artifact directories. No new paid resource, SDK/license/signing change or production certificate.
-
-### Shared and Checkout Implementation Checkpoint
-
-- Shared native JSON mutations/Admin role policy and immutable memory-only intent/reconciliation API pass280 VM tests and analysis. Supplied quote-bound UUIDs use `submit(input,idempotencyKey:quote.id)` and cannot replace uncertain/busy requests. Multipart, private binary/credential operations, durable encrypted outbox and event sync remain pending.
-- Backend quote/checkout/detail/currency/history foundations plus existing pricing/financial tests pass184 owned PostgreSQL cases in190.76s.34 checkout cases include two distinct customers at observed real inventory locks,100 reserved/60 rejected, exact50k/37k/18k credit refusal, quote-price changes and same-effect replay. No new schema revision, API deployment or fake financial/verification state.
-- Web uncertain order/payment/completion drafts now freeze path/body/key and mutable controls. A later4xx does not prove an earlier unknown attempt failed.47 focused cases and full220 development/220 production tests pass; authoritative outcome lookup and durable recovery remain required.
-- New `mobile/admin_app` and customer real ordering are active source implementation, not finished or signed releases. Native partner execution/customer handover, assignment/challenge revision, invoices/audit/attendance, S6/S7, workers and production durability remain open.
-
-## Review Account Checkpoint - 2026-11-16 UTC
-
-- User-authorized fictional review business/owner and separate customer/delivery-partner accounts now exist via the supported APIs. DPAPI-encrypted private recovery, bcrypt/auth/tenant/session guards and unverified-email state are retained; no real-person final password or new app default is generated.
-- Both real APK-role logins, `/auth/me`, customer catalog/order/detail/history and delivery `/my-route` contracts work. Two products, two cash orders and one assigned dispatched stop are visible; stable order intents/existing-resource reads preserve counts on a second seed.18 scoped operator tests pass in0.79s.
-- The stop is scheduled for2026-11-16 UTC and needs supported reassignment for another UTC day. No OTP/proof/receipt or delivered/paid/completed state is fabricated. The existing APKs need no rebuild; complete physical-phone/business/production acceptance, remaining features and free-tier limits stay open.
-
-## Hosted Review Checkpoint - 2026-11-15 UTC
-
-- Audited core `ff50596` has green remote CI and dedicated Free Singapore Docker API/web deployments. Direct and proxied deep health report PostgreSQL/Redis `ok`; desktop/mobile setup/login, private401 headers and rejected403 browser provenance are verified.
-- The empty dedicated PostgreSQL15 database migrated explicitly through `20261112_0006` over verified external TLS and a temporary single-IP window, now restored to deny-all external access. Runtime startup still checks schema and performs no DDL.
-- Both non-debuggable, privately signed `0.1.0-review` APKs are built/certificate-verified/installed on isolated Android35 via ADB5038. Native customer/delivery nonexistent-account attempts reached the public HTTPS API, returned401 and cleared passwords; both app-scoped crash checks passed. No owner/test business or client passwords were generated.
-- Free cold starts/database expiry2026-12-14/cache nonpersistence/ephemeral proofs were accepted for synthetic review only. No paid upgrade/trial/provider activation or production durability claim. Unrelated resources/preview and original ADB5037 remain untouched; the index preservation discrepancy is documented in project memory, not repaired by restaging/resetting.
-- Private owner setup, authenticated role workflows, production signing/storage/security, mail/OTP and the remaining application features are still gates. Native build warnings about future built-in Kotlin migration are not ignored as permanent toolchain compatibility.
-
-## Previous Password and Pricing Checkpoint - 2026-11-12
+## Current Password and Pricing Checkpoint - 2026-11-12
 
 - Authenticated `POST /auth/change-password` accepts only current/new passwords, supports all current active roles, and uses User-first persisted session/reset locks. Successful password/hash/audit/epoch retirement commits together, clears both cookies and requires a fresh login. Wrong-current attempts commit bounded durable counters; lockout is429 with bounded retry, not an automatic credential replay.
 - Private `/change-password` keeps passwords out of URLs/storage, clears fields, coordinates cancellation/session/cache changes and preserves only safe outcome notices across self-revocation. Lost/408/5xx/unexpected-success replies are unconfirmed, never fabricated success.
@@ -132,7 +67,7 @@ The required experience is three integrated applications: a real Admin applicati
 ## Phase 1 - Foundation (in progress)
 
 - [x] Monorepo scaffolding (`backend/`, `frontend/`, `mobile/`, `.ai/`).
-- [ ] Persistent production PostgreSQL + Redis durability/security; dedicated Free review dependencies are healthy, disposable PostgreSQL15.19 tooling remains local verification only.
+- [ ] Persistent local/production PostgreSQL + Redis setup verified; disposable PostgreSQL 15.19 tooling works locally, Redis remains unconfigured here.
 - [x] FastAPI skeleton + `/api/v1` versioned router.
 - [x] JWT rotation, stable-session/global revocation, reset single-use/digests, tenant context, and core customer/partner/staff privacy covered on real PostgreSQL.
 - [x] Opt-in SMTP/public recovery code with HMAC admission, current-recipient checks and fragment-only reset UI; live sender/Redis and durability remain unverified.
@@ -142,7 +77,7 @@ The required experience is three integrated applications: a real Admin applicati
 - [x] Real baseline/auth/stock/finance/POD/journal migrations through `20261112_0006`; strict legacy validation, exact-once receipt attribution, evidence-preserving downgrade guards, and no implicit startup DDL.
 - [x] First-launch setup wizard endpoint (`/setup/status`, `/setup/initialize`).
 - [x] Frontend lint/types/22-page build and208 dev/prod regressions; full owned backend1078/3 checkpoint plus separate browser-security tests.
-- [x] Audited core CI/Docker checks passed remotely; this does not certify production or all business scenarios.
+- [ ] CI/Docker runtime verified remotely; workflow source updated, not executed here.
 
 ## Phase 2 - Core Engines (financial/local-POD milestone, still partial)
 
@@ -169,8 +104,8 @@ The required experience is three integrated applications: a real Admin applicati
 - [ ] Next.js Admin Dashboard (setup wizard, inventory, orders, customers, deliveries, finance, AI panel).
 - [ ] Flutter Customer app (catalog, cart, order, tracking, invoices, credit history).
 - [ ] Flutter Delivery app (route, QR scan, OTP, proof, offline sync).
-- [x] Android runners, native release guards and dedicated signed Review APK build/install/HTTPS transport smoke, without PC endpoints or backend keys.
-- [ ] Authenticated Android business acceptance and production signing/durable deployment; review compilation is not complete client functionality.
+- [x] Android runner source, native resource/permission/transport/backup checks, diagnostic-only debug IDs and verified checksum-capable bootstrap; no APK compilation claim.
+- [ ] Android scaffolding/build/signing and release APKs using a real public HTTPS API, without developer-PC endpoints or private backend keys.
 
 ## Phase 4 - Finance and Analytics
 

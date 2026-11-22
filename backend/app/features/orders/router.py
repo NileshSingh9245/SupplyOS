@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, Header, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,10 +20,9 @@ from app.infrastructure.db.models.customer import Customer
 from app.infrastructure.db.models.order import (
     Order, OrderItem, OrderStatusHistory, Delivery,
 )
-from app.infrastructure.db.models.user import User
 from app.shared.audit import audit
 from app.shared import idempotency
-from app.shared.deps import get_current_user, lock_current_user, require_admin_or_manager
+from app.shared.deps import get_current_user, require_admin_or_manager
 from app.shared.schemas import ORMModel, Paginated
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -68,7 +67,6 @@ class OrderOut(ORMModel):
     warehouse_id: uuid.UUID
     status: str
     channel: str
-    currency_code: str | None = None
     subtotal: Decimal
     tax_total: Decimal
     discount_total: Decimal
@@ -149,23 +147,6 @@ async def _visible_order(db: AsyncSession, user, order_id: uuid.UUID) -> Order:
     return order
 
 
-async def _lock_order_operator(request: Request, db: AsyncSession) -> User:
-    user = await lock_current_user(request, db)
-    if user.role not in {Role.SUPER_ADMIN.value, Role.WAREHOUSE_MANAGER.value}:
-        raise Forbidden("Order operation is not permitted")
-    return user
-
-
-async def _commit_order_response(
-    db: AsyncSession, request: Request, order: Order,
-) -> OrderOut:
-    await db.flush()
-    response = await _load_full(db, order)
-    await get_current_user(request, db)
-    await db.commit()
-    return response
-
-
 @router.get("", response_model=Paginated[OrderOut])
 async def list_orders(
     status: OrderStatus | None = None,
@@ -229,12 +210,11 @@ async def order_stats(db: AsyncSession = Depends(get_db), user=Depends(get_curre
 
 @router.post("", response_model=OrderOut, status_code=201)
 async def create_order(
-    payload: OrderCreate, request: Request,
+    payload: OrderCreate,
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
     idempotency_key: uuid.UUID | None = Header(default=None, alias="X-Idempotency-Key"),
 ):
-    user = await lock_current_user(request, db)
     customer_id = payload.customer_id
     if user.role == Role.CUSTOMER.value:
         if not user.customer_id:
@@ -254,9 +234,7 @@ async def create_order(
     )
     if claim is not None and claim.response_body is not None:
         await _visible_order(db, user, claim.resource_id)
-        response = OrderOut.model_validate(claim.response_body)
-        await get_current_user(request, db)
-        return response
+        return OrderOut.model_validate(claim.response_body)
     order = await order_service.create_order(
         db, tenant_id=user.tenant_id, customer_id=customer_id,
         warehouse_id=payload.warehouse_id,
@@ -274,8 +252,6 @@ async def create_order(
     idempotency.remember(
         claim, response=response, status_code=201, resource_type="order", resource_id=order.id,
     )
-    await db.flush()
-    await get_current_user(request, db)
     await db.commit()
     return response
 
@@ -302,60 +278,56 @@ async def order_history(
 
 @router.post("/{order_id}/confirm", response_model=OrderOut)
 async def confirm(
-    order_id: uuid.UUID, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)
+    order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)
 ):
-    user = await _lock_order_operator(request, db)
     order = await order_service.confirm_order(
         db, order_id=order_id, tenant_id=user.tenant_id, actor_id=user.id
     )
     await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                 action="orders.confirm", resource_type="order", resource_id=str(order.id))
-    return await _commit_order_response(db, request, order)
+    await db.commit()
+    await db.refresh(order)
+    return await _load_full(db, order)
 
 
 @router.post("/{order_id}/reserve", response_model=OrderOut)
 async def reserve(
-    order_id: uuid.UUID, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)
+    order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)
 ):
-    user = await _lock_order_operator(request, db)
     order = await order_service.reserve_order(
         db, order_id=order_id, tenant_id=user.tenant_id, actor_id=user.id
     )
     await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                 action="orders.reserve", resource_type="order", resource_id=str(order.id))
-    return await _commit_order_response(db, request, order)
+    await db.commit()
+    await db.refresh(order)
+    return await _load_full(db, order)
 
 
 @router.post("/{order_id}/pick", response_model=OrderOut)
-async def pick(
-    order_id: uuid.UUID, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager),
-):
-    user = await _lock_order_operator(request, db)
+async def pick(order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)):
     order = await order_service.advance_status(
         db, order_id=order_id, tenant_id=user.tenant_id,
         to_status=OrderStatus.PICKED.value, actor_id=user.id,
     )
     await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                 action="orders.pick", resource_type="order", resource_id=str(order.id))
-    return await _commit_order_response(db, request, order)
+    await db.commit()
+    await db.refresh(order)
+    return await _load_full(db, order)
 
 
 @router.post("/{order_id}/pack", response_model=OrderOut)
-async def pack(
-    order_id: uuid.UUID, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager),
-):
-    user = await _lock_order_operator(request, db)
+async def pack(order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)):
     order = await order_service.advance_status(
         db, order_id=order_id, tenant_id=user.tenant_id,
         to_status=OrderStatus.PACKED.value, actor_id=user.id,
     )
     await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                 action="orders.pack", resource_type="order", resource_id=str(order.id))
-    return await _commit_order_response(db, request, order)
+    await db.commit()
+    await db.refresh(order)
+    return await _load_full(db, order)
 
 
 import secrets
@@ -366,11 +338,7 @@ def secrets_int() -> int:
 
 
 @router.post("/{order_id}/dispatch", response_model=OrderOut)
-async def dispatch(
-    order_id: uuid.UUID, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager),
-):
-    user = await _lock_order_operator(request, db)
+async def dispatch(order_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)):
     order = await order_service.advance_status(
         db, order_id=order_id, tenant_id=user.tenant_id,
         to_status=OrderStatus.OUT_FOR_DELIVERY.value, actor_id=user.id,
@@ -386,7 +354,9 @@ async def dispatch(
         ))
     await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                 action="orders.dispatch", resource_type="order", resource_id=str(order.id))
-    return await _commit_order_response(db, request, order)
+    await db.commit()
+    await db.refresh(order)
+    return await _load_full(db, order)
 
 
 def secrets_int_unused() -> int:  # kept to avoid import churn; use module-level secrets_int
@@ -396,11 +366,10 @@ def secrets_int_unused() -> int:  # kept to avoid import churn; use module-level
 
 @router.post("/{order_id}/deliver", response_model=OrderOut)
 async def deliver(
-    order_id: uuid.UUID, request: Request, payload: CollectRequest | None = Body(default=None),
+    order_id: uuid.UUID, payload: CollectRequest | None = Body(default=None),
     db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager),
     idempotency_key: uuid.UUID | None = Header(default=None, alias="X-Idempotency-Key"),
 ):
-    user = await _lock_order_operator(request, db)
     payload = payload or CollectRequest()
     await _visible_order(db, user, order_id)
     claim = await idempotency.claim(
@@ -409,9 +378,7 @@ async def deliver(
     )
     if claim is not None and claim.response_body is not None:
         await _visible_order(db, user, claim.resource_id)
-        response = OrderOut.model_validate(claim.response_body)
-        await get_current_user(request, db)
-        return response
+        return OrderOut.model_validate(claim.response_body)
     order = await order_service.deliver_order(
         db, order_id=order_id, tenant_id=user.tenant_id, actor_id=user.id,
         actor_role=user.role, actor_email=user.email, **payload.model_dump(),
@@ -421,22 +388,21 @@ async def deliver(
     idempotency.remember(
         claim, response=response, status_code=200, resource_type="order", resource_id=order.id,
     )
-    await db.flush()
-    await get_current_user(request, db)
     await db.commit()
     return response
 
 
 @router.post("/{order_id}/cancel", response_model=OrderOut)
 async def cancel(
-    order_id: uuid.UUID, payload: StatusChangeRequest, request: Request,
+    order_id: uuid.UUID, payload: StatusChangeRequest,
     db: AsyncSession = Depends(get_db), user=Depends(require_admin_or_manager)
 ):
-    user = await _lock_order_operator(request, db)
     order = await order_service.cancel_order(
         db, order_id=order_id, tenant_id=user.tenant_id, actor_id=user.id, note=payload.note
     )
     await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                 action="orders.cancel", resource_type="order", resource_id=str(order.id),
                 meta={"note": payload.note})
-    return await _commit_order_response(db, request, order)
+    await db.commit()
+    await db.refresh(order)
+    return await _load_full(db, order)

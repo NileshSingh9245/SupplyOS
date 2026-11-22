@@ -21,7 +21,7 @@ $environmentNames = @(
     'SUPPLYOS_REVIEW_KEYSTORE', 'SUPPLYOS_REVIEW_KEY_ALIAS', 'SUPPLYOS_REVIEW_STORE_PASSWORD',
     'SUPPLYOS_REVIEW_KEY_PASSWORD', 'SUPPLYOS_REVIEW_CERT_SHA256', 'SUPPLYOS_REVIEW_API_ORIGIN',
     'SUPPLYOS_REVIEW_NDK_PATH', 'GRADLE_USER_HOME', 'TEMP', 'TMP', 'ANDROID_HOME', 'ANDROID_SDK_ROOT',
-    'FLUTTER_SUPPRESS_ANALYTICS', 'CI', 'GRADLE_OPTS'
+    'FLUTTER_SUPPRESS_ANALYTICS', 'CI'
 )
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) {
@@ -404,8 +404,6 @@ try {
         } else {
             $phase = 'building the explicitly verified ' + $appName + ' review release'
             [Environment]::SetEnvironmentVariable('SUPPLYOS_REVIEW_API_ORIGIN', $VerifiedApiOrigin, 'Process')
-            [Environment]::SetEnvironmentVariable('GRADLE_OPTS',
-                '-Dorg.gradle.jvmargs="-Xmx3G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m" -Dorg.gradle.workers.max=2 -Dorg.gradle.daemon=false -Dorg.gradle.java.installations.auto-download=false', 'Process')
             "Building isolated non-debuggable review release: $packageId"
             $flutter = Join-Path $flutterRoot 'bin\flutter.bat'
             Invoke-ReviewProgram $flutter @('build', 'apk', '--release', '--flavor', 'review',

@@ -53,11 +53,11 @@ def allowed(path: Path) -> bool:
     return path.suffix.lower() in SOURCE_SUFFIXES or path.name in SOURCE_NAMES
 
 
-def export(destination: Path, *, refresh: bool = False) -> tuple[int, str]:
+def export(destination: Path) -> tuple[int, str]:
     parent = WORKSPACE / ".runtime" / "core-publication"
     if destination != parent / "repo" or not (destination / ".git").is_dir():
         raise RuntimeError("Destination must be the owned release clone, not the original worktree.")
-    if not refresh and any(path.name != ".git" for path in destination.iterdir()):
+    if any(path.name != ".git" for path in destination.iterdir()):
         raise RuntimeError("Release clone must have no checked-out or previously exported files.")
     files: list[tuple[Path, bytes]] = []
     for directory, folders, names in os.walk(WORKSPACE, followlinks=False):
@@ -81,9 +81,7 @@ def export(destination: Path, *, refresh: bool = False) -> tuple[int, str]:
     for path, data in sorted(files, key=lambda item: item[0].as_posix()):
         target = destination / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists() and (target.is_symlink() or getattr(target.lstat(), "st_file_attributes", 0) & 0x400):
-            raise RuntimeError(f"Destination reparse point is not exportable: {path.as_posix()}")
-        with target.open("wb" if refresh else "xb") as handle:
+        with target.open("xb") as handle:
             handle.write(data)
         shutil.copystat(WORKSPACE / path, target)
         digest.update(path.as_posix().encode("utf-8") + b"\0" + hashlib.sha256(data).digest())
@@ -93,9 +91,8 @@ def export(destination: Path, *, refresh: bool = False) -> tuple[int, str]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("destination", type=Path)
-    parser.add_argument("--refresh", action="store_true", help="Refresh only audited source files in the owned clone")
     args = parser.parse_args()
-    count, digest = export(args.destination.resolve(), refresh=args.refresh)
+    count, digest = export(args.destination.resolve())
     print(f"Exported {count} source files; dependencies, private data and signing material excluded.")
     print(f"Source snapshot SHA256: {digest}")
 

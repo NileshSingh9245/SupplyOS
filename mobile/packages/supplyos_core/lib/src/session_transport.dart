@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
 import 'api_config.dart';
 import 'failure.dart';
 import 'http_cookies.dart';
-import 'mutation_request.dart';
 import 'http_platform_stub.dart'
     if (dart.library.io) 'http_platform_io.dart'
     if (dart.library.js_interop) 'http_platform_web.dart'
@@ -80,103 +78,6 @@ class DioSessionTransport {
       return response.data;
     } on DioException catch (error) {
       throw AppFailure.fromDio(error);
-    } finally {
-      _pending.remove(token);
-    }
-  }
-
-  /// One JSON mutation attempt. Only the typed idempotency header is accepted.
-  Future<Object?> sendMutation<T>(
-    MutationRequest<T> request, {
-    CancelToken? cancelToken,
-  }) async {
-    if (!_acceptsRequests) throw const AppFailure(FailureKind.superseded);
-    final token = cancelToken ?? CancelToken();
-    if (token.isCancelled) throw const AppFailure(FailureKind.superseded);
-    _pending.add(token);
-    try {
-      final response = await _dio.request<String>(
-        request.path,
-        data: request.encodedBody,
-        cancelToken: token,
-        options: Options(
-          method: request.method.name.toUpperCase(),
-          responseType: ResponseType.plain,
-          // Inspect the status before decoding an untrusted/private error body.
-          validateStatus: (_) => true,
-          headers: {
-            if (request.idempotencyKey != null)
-              'X-Idempotency-Key': request.idempotencyKey,
-          },
-        ),
-      );
-      if (!_acceptsRequests || token.isCancelled) {
-        throw const AppFailure(
-          FailureKind.superseded,
-          isOutcomeUncertain: true,
-        );
-      }
-      final status = response.statusCode;
-      if (response.isRedirect || status != request.expectedStatus) {
-        final kind = switch (status) {
-          400 || 422 => FailureKind.validation,
-          401 => FailureKind.signedOut,
-          403 => FailureKind.forbidden,
-          404 => FailureKind.notFound,
-          409 => FailureKind.conflict,
-          429 => FailureKind.rateLimited,
-          408 => FailureKind.timeout,
-          final int value when value >= 500 => FailureKind.server,
-          _ => FailureKind.invalidResponse,
-        };
-        final retryValues = response.headers['retry-after'];
-        final retry = status == 429 && retryValues?.length == 1
-            ? int.tryParse(retryValues!.single)
-            : null;
-        throw AppFailure(
-          kind,
-          statusCode: status,
-          isOutcomeUncertain:
-              response.isRedirect ||
-              !const {400, 401, 403, 404, 409, 422, 429}.contains(status),
-          retryAfterSeconds: retry != null && retry >= 1 && retry <= 3600
-              ? retry
-              : null,
-        );
-      }
-      if (status == 204) {
-        if (response.data != null && response.data != '') {
-          throw const AppFailure(
-            FailureKind.invalidResponse,
-            statusCode: 204,
-            isOutcomeUncertain: true,
-          );
-        }
-        return null;
-      }
-      final mime = response.headers
-          .value(Headers.contentTypeHeader)
-          ?.split(';')
-          .first
-          .trim()
-          .toLowerCase();
-      if (mime != Headers.jsonContentType || response.data == null) {
-        throw AppFailure(
-          FailureKind.invalidResponse,
-          statusCode: status,
-          isOutcomeUncertain: true,
-        );
-      }
-      return jsonDecode(response.data!);
-    } on AppFailure {
-      rethrow;
-    } on DioException catch (error) {
-      throw AppFailure.fromDio(error).asUncertain();
-    } catch (_) {
-      throw const AppFailure(
-        FailureKind.invalidResponse,
-        isOutcomeUncertain: true,
-      );
     } finally {
       _pending.remove(token);
     }

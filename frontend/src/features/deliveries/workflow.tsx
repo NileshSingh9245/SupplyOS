@@ -56,7 +56,7 @@ export function DeliveryWorkflow({ open, delivery, onClose, onRefresh, onComplet
   const canComplete = !completed && !!order.data && delivery.otp_verified && !!privateProofPath(signatureRef) && !!privateProofPath(photoRef) && cashAmount !== null && upiAmount !== null;
 
   async function run(name: "start" | "verify-otp") {
-    if (actionActive.current || mutation.busy || mutation.unconfirmed) return;
+    if (actionActive.current || mutation.busy) return;
     actionActive.current = true; setAction(name); setActionError(null);
     try {
       await api.post(`/deliveries/${delivery.id}/${name}`, name === "verify-otp" ? { otp_code: otp } : undefined);
@@ -68,7 +68,7 @@ export function DeliveryWorkflow({ open, delivery, onClose, onRefresh, onComplet
   }
 
   async function upload(kind: "signature" | "photo", source: File | HTMLCanvasElement) {
-    if (actionActive.current || mutation.busy || mutation.unconfirmed) return;
+    if (actionActive.current || mutation.busy) return;
     actionActive.current = true; setAction(kind); setActionError(null);
     try {
       const file = source instanceof HTMLCanvasElement ? await new Promise<File>((resolve, reject) => {
@@ -114,17 +114,17 @@ export function DeliveryWorkflow({ open, delivery, onClose, onRefresh, onComplet
           <>
             <section className="pane p-4 space-y-3">
               <h3 className="data-label">1 / Start and recipient verification</h3>
-              {!delivery.started_at && <button className="btn-ghost" disabled={busy || mutation.unconfirmed} onClick={() => void run("start")} data-testid="delivery-start">{action === "start" ? "Starting..." : "Start delivery"}</button>}
+              {!delivery.started_at && <button className="btn-ghost" disabled={busy} onClick={() => void run("start")} data-testid="delivery-start">{action === "start" ? "Starting..." : "Start delivery"}</button>}
               {delivery.otp_verified ? <p className="chip chip-success" data-testid="delivery-otp-verified">OTP verified</p> : <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); void run("verify-otp"); }}>
                 <label className="data-label" htmlFor="delivery-otp">Recipient OTP (6 digits)</label>
-                <input id="delivery-otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} disabled={busy || mutation.unconfirmed} onChange={(event) => setOtp(event.target.value)} data-testid="delivery-otp" />
-                <button className="btn-volt" disabled={busy || mutation.unconfirmed || !/^[0-9]{6}$/.test(otp)} data-testid="delivery-verify">{action === "verify-otp" ? "Verifying..." : "Verify OTP"}</button>
+                <input id="delivery-otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} disabled={busy} onChange={(event) => setOtp(event.target.value)} data-testid="delivery-otp" />
+                <button className="btn-volt" disabled={busy || !/^[0-9]{6}$/.test(otp)} data-testid="delivery-verify">{action === "verify-otp" ? "Verifying..." : "Verify OTP"}</button>
               </form>}
               <p className="text-xs text-text-secondary">Ask the recipient for the OTP. Automatic SMS/WhatsApp delivery is not connected.</p>
             </section>
-            <fieldset disabled={busy || mutation.unconfirmed} className="pane p-4 space-y-4">
+            <fieldset disabled={busy} className="pane p-4 space-y-4">
               <legend className="data-label px-1">2 / Capture proof</legend>
-              <SignaturePad disabled={busy || mutation.unconfirmed} onCapture={(canvas) => void upload("signature", canvas)} />
+              <SignaturePad disabled={busy} onCapture={(canvas) => void upload("signature", canvas)} />
               <div><label className="data-label" htmlFor="delivery-signature-file">Upload signature image instead</label><input id="delivery-signature-file" className="input mt-1" type="file" accept="image/png,image/jpeg" data-testid="delivery-signature-file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload("signature", file); }} /></div>
               <div><label className="data-label" htmlFor="delivery-photo-file">Delivery photo</label><input id="delivery-photo-file" className="input mt-1" type="file" accept="image/png,image/jpeg" data-testid="delivery-photo-file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload("photo", file); }} /></div>
               <p className="text-xs text-text-secondary">PNG/JPEG only, at most 5 MiB and 20 million pixels. The server validates images and binds them to this delivery.</p>
@@ -134,7 +134,7 @@ export function DeliveryWorkflow({ open, delivery, onClose, onRefresh, onComplet
         )}
         {signatureRef && <ProofPreview reference={signatureRef} label="Signature" />}
         {photoRef && <ProofPreview reference={photoRef} label="Photo" />}
-        {!completed && <fieldset disabled={busy || mutation.unconfirmed} className="pane p-4 space-y-3">
+        {!completed && <fieldset disabled={busy} className="pane p-4 space-y-3">
           <legend className="data-label px-1">3 / Collection and completion</legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div><label className="data-label" htmlFor="delivery-cash">Cash collected (INR)</label><input id="delivery-cash" className="input mt-1" inputMode="decimal" value={cash} onChange={(event) => { mutation.payloadChanged(); setCash(event.target.value); }} data-testid="delivery-cash" /></div>
@@ -142,11 +142,11 @@ export function DeliveryWorkflow({ open, delivery, onClose, onRefresh, onComplet
           </div>
           {(cashAmount === null || upiAmount === null) && <p role="alert">Use non-negative amounts with at most two decimal places, without commas or exponent.</p>}
           <p className="text-xs text-text-secondary">Cash orders require fully allocated cash/UPI/bank receipts before completion. Credit holds and remaining funding are checked by the server. This records declared receipts, not a gateway verification.</p>
+          <button className="btn-volt" disabled={busy || !canComplete} onClick={() => void complete()} data-testid="delivery-complete">{mutation.busy ? "Completing..." : mutation.unconfirmed ? "Retry completion" : "Complete delivery"}</button>
         </fieldset>}
-        {!completed && <button className="btn-volt" disabled={busy || !canComplete} onClick={() => void complete()} data-testid="delivery-complete">{mutation.busy ? "Completing..." : mutation.unconfirmed ? "Retry completion" : "Complete delivery"}</button>}
         {actionError && <p role="alert" data-testid="delivery-action-error">{actionError}</p>}
         {mutation.error && <p role="alert" data-testid="delivery-complete-error">{mutation.error}</p>}
-        {mutation.unconfirmed && <p role="status" className="text-sm" data-testid="delivery-unconfirmed">Result unconfirmed. Proof and collection fields are locked. Retry unchanged with the same request key; do not collect the payment again.</p>}
+        {mutation.unconfirmed && <p role="status" className="text-sm" data-testid="delivery-unconfirmed">Result unconfirmed. Retry unchanged with the same request key. Do not collect the payment again.</p>}
         <div className="flex flex-wrap justify-end gap-2">
           <button className="btn-ghost" disabled={busy} onClick={() => void Promise.all([onRefresh(), order.refetch()])} data-testid="delivery-refresh">Refresh server state</button>
           <button className="btn-ghost" disabled={busy} onClick={onClose} data-testid="delivery-close">Close</button>

@@ -12,10 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import OrderStatus, PaymentMode
 from app.core.exceptions import Conflict, CreditLimitExceeded, DomainError, NotFound
 from app.infrastructure.db.models.customer import Customer, LedgerEntry
-from app.infrastructure.db.models.order import Order, Payment
+from app.infrastructure.db.models.order import Order, OrderStatusHistory, Payment
 from app.shared.audit import audit
 from app.shared.decimal_values import validated_decimal
-from app.shared.order_events import record_status
 
 LIVE_STATUSES = ("pending", "confirmed", "reserved", "picked", "packed", "out_for_delivery")
 FUNDED_MODES = ("cash", "upi", "bank_transfer")
@@ -78,10 +77,13 @@ def require_credit_capacity(customer: Customer, *, additional: Decimal = Decimal
         raise CreditLimitExceeded("Customer balance and live commitments would exceed the credit limit")
 
 
-async def mark_paid(db: AsyncSession, *, order: Order, actor_id: uuid.UUID | None) -> None:
+def mark_paid(db: AsyncSession, *, order: Order, actor_id: uuid.UUID | None) -> None:
     if order.status == OrderStatus.DELIVERED.value and order.amount_paid == order.grand_total:
-        await record_status(db, order=order, to_status=OrderStatus.PAID.value,
-                            actor_id=actor_id, note="Order fully funded after physical delivery")
+        db.add(OrderStatusHistory(
+            tenant_id=order.tenant_id, order_id=order.id, from_status=order.status,
+            to_status=OrderStatus.PAID.value, actor_id=actor_id,
+            note="Order fully funded after physical delivery",
+        ))
         order.status = OrderStatus.PAID.value
 
 
@@ -151,7 +153,7 @@ async def record_payment(
             customer.cash_funded_pending = validated_decimal(
                 customer.cash_funded_pending + amount, name="Pending cash funding",
             )
-        await mark_paid(db, order=order, actor_id=actor_id)
+        mark_paid(db, order=order, actor_id=actor_id)
     customer.outstanding = validated_decimal(
         customer.outstanding - amount, name="Customer balance", minimum=None,
     )

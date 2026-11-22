@@ -25,7 +25,6 @@ Map<String, Object?> orderJson(
       'customer_id': userAId,
       'warehouse_id': tenantAId,
       'status': 'reserved',
-      'currency_code': 'INR',
       'channel': 'app',
       'subtotal': '246.9000',
       'tax_total': '44.4420',

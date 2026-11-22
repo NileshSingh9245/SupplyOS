@@ -36,34 +36,15 @@ test("successful identical payments are distinct intents, never body-deduplicate
   expect(intent.begin({ amount: "10.00" })).not.toBe(key);
 });
 
-test("editing cannot abandon an uncertain original body and key", () => {
+test("editing and restoring a payload still starts a new intent", () => {
   const intent = createRequestIntent();
   const key = intent.begin({ amount: "10.00" });
   intent.finish(failure());
-  expect(intent.change()).toBe(false);
-  expect(intent.begin({ amount: "11.00" })).toBeNull();
-  expect(intent.begin({ amount: "10.00" })).toBe(key);
+  intent.change();
+  expect(intent.begin({ amount: "10.00" })).not.toBe(key);
   intent.finish(failure(503));
-  expect(intent.begin({ amount: "11.00" })).toBeNull();
-  expect(intent.begin({ amount: "10.00" })).toBe(key);
+  expect(intent.begin({ amount: "11.00" })).not.toBe(key);
 });
-
-for (const status of [400, 401, 403, 409, 422, 429]) {
-  test(`a later ${status} rejection cannot resolve an earlier unknown result`, () => {
-    const intent = createRequestIntent();
-    const key = intent.begin({ amount: "10.00" });
-    intent.finish(failure(503));
-    expect(intent.begin({ amount: "10.00" })).toBe(key);
-    intent.finish(failure(status));
-    expect(intent.unresolved).toBe(true);
-    expect(intent.change()).toBe(false);
-    expect(intent.begin({ amount: "11.00" })).toBeNull();
-    expect(intent.begin({ amount: "10.00" })).toBe(key);
-    intent.finish();
-    expect(intent.unresolved).toBe(false);
-    expect(intent.begin({ amount: "11.00" })).not.toBe(key);
-  });
-}
 
 test("money input stays exact decimal text and rejects invalid precision and magnitudes", () => {
   expect(moneyInput(" 0010.5 ")).toBe("10.50");

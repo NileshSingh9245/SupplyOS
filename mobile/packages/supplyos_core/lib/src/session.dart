@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api_config.dart';
 import 'failure.dart';
 import 'json_contract.dart';
-import 'mutation_request.dart';
 import 'session_transport.dart';
 
 enum SessionPhase {
@@ -19,24 +18,6 @@ enum SessionPhase {
 }
 
 enum LogoutOutcome { confirmed, unconfirmed }
-
-final class SessionRolePolicy {
-  const SessionRolePolicy._(this.expectedRole, this.allowedRoles);
-
-  factory SessionRolePolicy.exact(String role) =>
-      SessionRolePolicy._(role, Set<String>.unmodifiable({role}));
-
-  static const admin = SessionRolePolicy._('admin', {
-    'super_admin',
-    'warehouse_manager',
-    'accountant',
-  });
-
-  final String expectedRole;
-  final Set<String> allowedRoles;
-
-  bool allows(String role) => allowedRoles.contains(role);
-}
 
 class SessionUser {
   const SessionUser({
@@ -142,15 +123,10 @@ typedef SessionProvider =
     StateNotifierProvider<SessionController, SessionState>;
 
 SessionProvider roleSessionProvider(String role) =>
-    _policySessionProvider(SessionRolePolicy.exact(role));
-
-final adminSessionProvider = _policySessionProvider(SessionRolePolicy.admin);
-
-SessionProvider _policySessionProvider(SessionRolePolicy policy) =>
     StateNotifierProvider<SessionController, SessionState>((ref) {
-      final controller = SessionController.withRolePolicy(
+      final controller = SessionController(
         config: ref.watch(apiConfigProvider),
-        rolePolicy: policy,
+        expectedRole: role,
         transportFactory: ref.watch(sessionTransportFactoryProvider),
       );
       unawaited(controller.bootstrap());
@@ -159,21 +135,10 @@ SessionProvider _policySessionProvider(SessionRolePolicy policy) =>
 
 class SessionController extends StateNotifier<SessionState> {
   SessionController({
-    required ApiConfig? config,
-    required String expectedRole,
-    SessionTransportFactory? transportFactory,
-  }) : this.withRolePolicy(
-         config: config,
-         rolePolicy: SessionRolePolicy.exact(expectedRole),
-         transportFactory: transportFactory,
-       );
-
-  SessionController.withRolePolicy({
     required this.config,
-    required this.rolePolicy,
+    required this.expectedRole,
     SessionTransportFactory? transportFactory,
-  }) : expectedRole = rolePolicy.expectedRole,
-       _transportFactory = transportFactory ?? DioSessionTransport.new,
+  }) : _transportFactory = transportFactory ?? DioSessionTransport.new,
        super(
          SessionState(
            phase: config == null
@@ -188,7 +153,6 @@ class SessionController extends StateNotifier<SessionState> {
 
   final ApiConfig? config;
   final String expectedRole;
-  final SessionRolePolicy rolePolicy;
   final SessionTransportFactory _transportFactory;
   int _generation = 0;
   _SessionEpoch? _epoch;
@@ -253,7 +217,7 @@ class SessionController extends StateNotifier<SessionState> {
   }
 
   void _checkRole(SessionUser user) {
-    if (!rolePolicy.allows(user.role)) {
+    if (user.role != expectedRole) {
       throw const AppFailure(FailureKind.wrongRole);
     }
   }
@@ -363,56 +327,6 @@ class SessionController extends StateNotifier<SessionState> {
       cancelToken: cancelToken,
     );
     Future<void>? renewal;
-    while ((renewal = pendingRenewalForScope(scope)) != null) {
-      await renewal;
-    }
-    return result;
-  }
-
-  /// Never refresh/replay a mutation automatically, including after a 401.
-  Future<MutationResponse<T>> mutate<T>(
-    MutationRequest<T> request, {
-    CancelToken? cancelToken,
-  }) async {
-    final scope = request.scope;
-    requireScope(scope);
-    // Equal value keys from another controller are not this session's intent.
-    if (!identical(state.key, scope)) {
-      throw const AppFailure(FailureKind.superseded);
-    }
-    final epoch = _epoch!;
-    Future<void>? renewal;
-    while ((renewal = pendingRenewalForScope(scope)) != null) {
-      await renewal;
-    }
-    final Object? response;
-    try {
-      response = await epoch.transport.sendMutation(
-        request,
-        cancelToken: cancelToken,
-      );
-    } catch (error) {
-      while ((renewal = pendingRenewalForScope(scope)) != null) {
-        await renewal;
-      }
-      final failure = AppFailure.safe(error);
-      if (failure.statusCode == 401) {
-        _endLocally(epoch, const AppFailure(FailureKind.signedOut));
-      }
-      throw failure;
-    }
-    while ((renewal = pendingRenewalForScope(scope)) != null) {
-      await renewal;
-    }
-    final MutationResponse<T> result;
-    try {
-      result = await request.decodeResponse(request.expectedStatus, response);
-    } catch (error) {
-      while ((renewal = pendingRenewalForScope(scope)) != null) {
-        await renewal;
-      }
-      throw AppFailure.safe(error).asUncertain();
-    }
     while ((renewal = pendingRenewalForScope(scope)) != null) {
       await renewal;
     }

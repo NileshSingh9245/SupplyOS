@@ -1,7 +1,5 @@
 import 'package:supplyos_core/supplyos_core.dart';
 
-import '../../core/customer_contract.dart';
-
 class OrderItem {
   const OrderItem._({
     required this.id,
@@ -34,12 +32,12 @@ class OrderItem {
       productId: json.uuid('product_id'),
       productSku: json.string('product_sku'),
       productName: json.string('product_name'),
-      quantity: serverQuantity(json.value('quantity')),
-      unitPrice: serverAmount(json.value('unit_price')),
-      gstRate: serverTaxRate(json.value('gst_rate')),
-      lineSubtotal: serverAmount(json.value('line_subtotal')),
-      lineTax: serverAmount(json.value('line_tax')),
-      lineTotal: serverAmount(json.value('line_total')),
+      quantity: json.decimal('quantity'),
+      unitPrice: json.decimal('unit_price'),
+      gstRate: json.decimal('gst_rate'),
+      lineSubtotal: json.decimal('line_subtotal'),
+      lineTax: json.decimal('line_tax'),
+      lineTotal: json.decimal('line_total'),
     );
   }
 }
@@ -68,7 +66,6 @@ class Order {
     this.notes,
     this.confirmedAt,
     this.deliveredAt,
-    this.currencyCode,
   });
 
   final String id;
@@ -93,7 +90,6 @@ class Order {
   final ServerTimestamp? confirmedAt;
   final ServerTimestamp? deliveredAt;
   final List<OrderItem> items;
-  final String? currencyCode;
 
   factory Order.fromJson(Object? input) {
     final json = JsonObject(input);
@@ -104,15 +100,15 @@ class Order {
       warehouseId: json.uuid('warehouse_id'),
       status: json.string('status'),
       channel: json.string('channel'),
-      subtotal: serverAmount(json.value('subtotal')),
-      taxTotal: serverAmount(json.value('tax_total')),
-      discountTotal: serverAmount(json.value('discount_total')),
-      grandTotal: serverAmount(json.value('grand_total')),
-      amountPaid: serverAmount(json.value('amount_paid')),
+      subtotal: json.decimal('subtotal'),
+      taxTotal: json.decimal('tax_total'),
+      discountTotal: json.decimal('discount_total'),
+      grandTotal: json.decimal('grand_total'),
+      amountPaid: json.decimal('amount_paid'),
       paymentMode: json.string('payment_mode'),
-      creditHoldAmount: serverAmount(json.value('credit_hold_amount')),
+      creditHoldAmount: json.decimal('credit_hold_amount'),
       paymentStatus: json.string('payment_status'),
-      amountDue: serverAmount(json.value('amount_due')),
+      amountDue: json.decimal('amount_due'),
       scheduledDeliveryDate: json.optionalDate('scheduled_delivery_date'),
       deliveryAddress: json.optionalString('delivery_address'),
       notes: json.optionalString('notes'),
@@ -120,9 +116,6 @@ class Order {
       confirmedAt: json.optionalTimestamp('confirmed_at'),
       deliveredAt: json.optionalTimestamp('delivered_at'),
       items: json.list('items', OrderItem.fromJson),
-      currencyCode: json.value('currency_code') == null
-          ? null
-          : serverCurrency(json.value('currency_code')),
     );
   }
 }

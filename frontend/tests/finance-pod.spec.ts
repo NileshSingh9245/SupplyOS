@@ -203,7 +203,7 @@ test("customer directory shows signed balances, server holds/available credit an
   await expect(row.locator("td[data-label='Utilization']")).toHaveCount(0);
 });
 
-test("definitive rejection allows a new intent but a later unknown result freezes its body and key", async ({ page, createApp }) => {
+test("definitive rejection and payload changes create new payment keys", async ({ page, createApp }) => {
   const fixture = await createApp({ paymentFailures: [409, 503] });
   await page.goto("/finance");
   await openPayment(page, fixture);
@@ -213,44 +213,11 @@ test("definitive rejection allows a new intent but a later unknown result freeze
   await expect(page.getByTestId("pay-unconfirmed")).toHaveCount(0);
   await page.getByTestId("pay-submit").click();
   await expect(page.getByTestId("pay-unconfirmed")).toBeVisible();
-  await expect(page.getByTestId("pay-amount")).toBeDisabled();
-  await expect(page.getByTestId("pay-customer")).toBeDisabled();
-  await expect(page.getByTestId("pay-mode")).toBeDisabled();
-  await expect(page.getByTestId("pay-amount")).toHaveValue("10.00");
+  await page.getByTestId("pay-amount").fill("11.00");
   await page.getByTestId("pay-submit").click();
   await expect(page.getByTestId("pay-modal")).toHaveCount(0);
   const calls = (await inspect(page, fixture)).calls.filter((item) => item.path === "/payments" && item.method === "POST");
-  expect(new Set(calls.map((item) => item.key)).size).toBe(2);
-  expect(calls[1].key).toBe(calls[2].key);
-  expect(calls[1].body).toEqual(calls[2].body);
-});
-
-test("a rejection after an already-committed lost reply cannot unlock fields or replace the original payment", async ({ page, createApp }) => {
-  const fixture = await createApp({ paymentFailures: ["after-commit-503"] });
-  await page.goto("/finance");
-  await openPayment(page, fixture);
-  await page.getByTestId("pay-amount").fill("10.00");
-  await page.getByTestId("pay-submit").click();
-  await expect(page.getByTestId("pay-unconfirmed")).toBeVisible();
-  let reject = true;
-  await page.route("**/api/v1/payments", async (route) => {
-    if (route.request().method() === "POST" && reject) {
-      reject = false;
-      await route.fulfill({ status: 422, json: { detail: "Controlled later validation rejection" } });
-    } else await route.continue();
-  });
-  await page.getByTestId("pay-submit").click();
-  await expect(page.getByTestId("pay-unconfirmed")).toBeVisible();
-  await expect(page.getByTestId("pay-amount")).toBeDisabled();
-  await expect(page.getByTestId("pay-amount")).toHaveValue("10.00");
-  await page.getByTestId("pay-submit").click();
-  await expect(page.getByTestId("pay-modal")).toHaveCount(0);
-  const state = await inspect(page, fixture);
-  const calls = state.calls.filter((item) => item.path === "/payments" && item.method === "POST");
-  expect(calls).toHaveLength(2);
-  expect(calls[0].key).toBe(calls[1].key);
-  expect(calls[0].body).toEqual(calls[1].body);
-  expect(state.payments).toHaveLength(1);
+  expect(new Set(calls.map((item) => item.key)).size).toBe(3);
 });
 
 test("double submit cannot create two requests while one user intent is active", async ({ page, createApp }) => {

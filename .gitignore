@@ -26,6 +26,3 @@ test_reports/runtime/
 
 # Dedicated local Android review signing, never production keys.
 /.private/review-signing/
-
-# Dedicated review deployment credentials and operator state.
-/.private/render-review/

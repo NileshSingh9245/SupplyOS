@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.db.models.customer import Customer, CustomerPrice, PriceTier
-from app.infrastructure.db.models.product import Category, Product
+from app.infrastructure.db.models.product import Product
 from app.infrastructure.db.models.tenant import Tenant
 
 
@@ -24,20 +24,13 @@ class PriceRow:
     gst_rate: Decimal
     override_price: Decimal | None
     discount_pct: Decimal | None
-    description: str | None = None
-    category_id: uuid.UUID | None = None
-    barcode: str | None = None
-    hsn_code: str | None = None
-    image_url: str | None = None
 
 
-def _products(tenant_id: uuid.UUID, q: str | None = None, category_id: uuid.UUID | None = None):
+def _products(tenant_id: uuid.UUID, q: str | None = None):
     query = select(Product.id).where(Product.tenant_id == tenant_id, Product.is_active.is_(True))
     if q:
         like = f"%{q.lower()}%"
         query = query.where(or_(func.lower(Product.name).like(like), func.lower(Product.sku).like(like)))
-    if category_id is not None:
-        query = query.where(Product.category_id == category_id)
     return query
 
 
@@ -45,31 +38,25 @@ async def priced_rows(
     db: AsyncSession, *, tenant_id: uuid.UUID, customer_id: uuid.UUID,
     product_ids: Collection[uuid.UUID] | None = None, q: str | None = None,
     offset: int = 0, limit: int = 200,
-    category_id: uuid.UUID | None = None,
 ) -> list[PriceRow]:
     query = select(
         Product.id, Product.sku, Product.name, Product.unit, Product.base_price, Product.gst_rate,
         CustomerPrice.price, PriceTier.discount_pct,
-        Product.description, Product.category_id, Product.barcode, Product.hsn_code, Product.image_url,
     ).select_from(Product).join(Customer,
         (Customer.id == customer_id) & (Customer.tenant_id == tenant_id) & Customer.is_active.is_(True),
     ).outerjoin(CustomerPrice,
         (CustomerPrice.tenant_id == tenant_id) & (CustomerPrice.customer_id == customer_id)
         & (CustomerPrice.product_id == Product.id),
     ).outerjoin(PriceTier, (PriceTier.tenant_id == tenant_id) & (PriceTier.name == Customer.price_tier))
-    query = query.where(Product.id.in_(_products(tenant_id, q, category_id)))
+    query = query.where(Product.id.in_(_products(tenant_id, q)))
     if product_ids is not None:
         query = query.where(Product.id.in_(product_ids))
     rows = (await db.execute(query.order_by(Product.name, Product.id).offset(offset).limit(limit))).all()
     return [PriceRow(*row) for row in rows]
 
 
-async def product_count(db: AsyncSession, tenant_id: uuid.UUID, q: str | None, category_id: uuid.UUID | None = None) -> int:
-    return await db.scalar(select(func.count()).select_from(_products(tenant_id, q, category_id).subquery()))
-
-
-async def category_exists(db: AsyncSession, tenant_id: uuid.UUID, category_id: uuid.UUID) -> bool:
-    return await db.scalar(select(Category.id).where(Category.tenant_id == tenant_id, Category.id == category_id)) is not None
+async def product_count(db: AsyncSession, tenant_id: uuid.UUID, q: str | None) -> int:
+    return await db.scalar(select(func.count()).select_from(_products(tenant_id, q).subquery()))
 
 
 async def active_customer(db: AsyncSession, tenant_id: uuid.UUID, customer_id: uuid.UUID) -> bool:

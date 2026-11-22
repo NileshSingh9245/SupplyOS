@@ -257,7 +257,7 @@ function NewOrderModal({
         <h3 id="new-order-title" className="font-display text-2xl font-bold mt-1 mb-4">New order</h3>
         {[customerQuery, warehouseQuery, productQuery].some((query) => query.isPending) && <p role="status">Loading order choices...</p>}
         {[customerQuery, warehouseQuery, productQuery].map((query, index) => query.error ? <p key={index} role="alert">{apiError(query.error)} <button className="btn-ghost" onClick={() => void query.refetch()}>Retry choices</button></p> : null)}
-        <fieldset disabled={mutation.busy || mutation.unconfirmed}>
+        <fieldset disabled={mutation.busy}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="data-label">Customer *</label>
@@ -356,7 +356,7 @@ function NewOrderModal({
         </button>
         </fieldset>
         {mutation.error && <p role="alert" className="mt-3" data-testid="order-error">{mutation.error}</p>}
-        {mutation.unconfirmed && <p role="status" className="text-sm mt-2" data-testid="order-unconfirmed">Result unconfirmed. Fields are locked until the unchanged original request is recovered with its same key. Do not create another order for this intent.</p>}
+        {mutation.unconfirmed && <p role="status" className="text-sm mt-2" data-testid="order-unconfirmed">Result unconfirmed. Retry unchanged with the same request key. Changing fields starts a new order intent.</p>}
 
         <div className="flex justify-end gap-2 mt-5">
           <button

@@ -45,11 +45,3 @@ class ResolvedProduct(ORMModel):
 
 class CatalogProduct(ResolvedProduct):
     currency_code: str
-
-
-class CatalogDetail(CatalogProduct):
-    description: str | None = None
-    category_id: uuid.UUID | None = None
-    barcode: str | None = None
-    hsn_code: str | None = None
-    image_url: str | None = None

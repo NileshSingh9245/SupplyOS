@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import uuid
-import re
 from datetime import datetime, date
 from decimal import Decimal
 
@@ -75,14 +74,6 @@ class Order(Base, UUIDPKMixin, TimestampMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     meta: Mapped[dict | None] = mapped_column(JSON, default=dict)
-
-    @property
-    def currency_code(self) -> str | None:
-        snapshot = self.meta.get("order_currency_snapshot") if isinstance(self.meta, dict) else None
-        if not isinstance(snapshot, dict) or snapshot.get("version") != 1:
-            return None
-        code = snapshot.get("code")
-        return code if isinstance(code, str) and re.fullmatch(r"[A-Z]{3}", code) else None
 
     @property
     def payment_status(self) -> str:

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.enums import OrderStatus, Role
+from app.core.enums import Role
 from app.core.exceptions import Conflict, DomainError, Forbidden, NotFound
 from app.features.proofs import service
 from app.infrastructure.db.models.order import Delivery, Order
@@ -39,49 +39,24 @@ class ProofOut(ORMModel):
     url: str
 
 
-async def visible_delivery(
-    db: AsyncSession, user, delivery_id: uuid.UUID, *, lock=False, require_open=False,
-) -> Delivery:
-    if user.role not in {
-        Role.SUPER_ADMIN.value, Role.WAREHOUSE_MANAGER.value, Role.ACCOUNTANT.value,
-        Role.DELIVERY_PARTNER.value, Role.CUSTOMER.value,
-    }:
-        raise Forbidden("Proof access is not permitted")
-    parent = None
-    if lock:
-        parent = await service.lock_delivery_order(
-            db, tenant_id=user.tenant_id, delivery_id=delivery_id,
-        )
+async def visible_delivery(db: AsyncSession, user, delivery_id: uuid.UUID, *, lock=False) -> Delivery:
     statement = select(Delivery).where(
         Delivery.id == delivery_id, Delivery.tenant_id == user.tenant_id,
     ).execution_options(populate_existing=True)
     if lock:
-        statement = statement.where(Delivery.order_id == parent.id).with_for_update()
+        statement = statement.with_for_update()
     delivery = (await db.execute(statement)).scalar_one_or_none()
     if delivery is None:
         raise NotFound("Delivery not found")
     if user.role == Role.DELIVERY_PARTNER.value and delivery.partner_id != user.id:
         raise Forbidden("Not your delivery")
     if user.role == Role.CUSTOMER.value:
-        if user.customer_id is None:
-            raise Forbidden("Customer profile missing")
         order = (await db.execute(select(Order.id).where(
             Order.id == delivery.order_id, Order.tenant_id == user.tenant_id,
             Order.customer_id == user.customer_id,
         ))).scalar_one_or_none()
         if order is None:
             raise NotFound("Delivery not found")
-    if require_open:
-        if parent is None:
-            parent = (await db.execute(select(Order).where(
-                Order.id == delivery.order_id, Order.tenant_id == user.tenant_id,
-            ))).scalar_one_or_none()
-        if parent is None:
-            raise NotFound("Delivery not found")
-        if parent.status == OrderStatus.CANCELLED.value:
-            raise Conflict("Cancelled order delivery cannot accept proofs")
-        if parent.status != OrderStatus.OUT_FOR_DELIVERY.value:
-            raise Conflict("Order must be out_for_delivery")
     return delivery
 
 
@@ -91,7 +66,7 @@ async def upload_proof(
     file: UploadFile = File(...), db: AsyncSession = Depends(get_db), user=Depends(require_proof_writer),
     store: ProofStore = Depends(get_proof_store),
 ):
-    delivery = await visible_delivery(db, user, delivery_id, require_open=True)
+    delivery = await visible_delivery(db, user, delivery_id)
     if delivery.completed_at is not None:
         raise Conflict("Completed delivery proofs are immutable")
     try:
@@ -114,21 +89,11 @@ async def upload_proof(
         store.check_location(operation)
     except (StorageIntegrityError, StorageUnavailable):
         raise DomainError("Private proof storage is unavailable", code=503) from None
-    user = await lock_current_user(request, db)
-    if user.role not in {
-        Role.SUPER_ADMIN.value, Role.WAREHOUSE_MANAGER.value, Role.DELIVERY_PARTNER.value,
-    }:
-        raise Forbidden("Proof upload is no longer permitted")
-    delivery = await visible_delivery(db, user, delivery_id, lock=True, require_open=True)
+    delivery = await visible_delivery(db, user, delivery_id, lock=True)
     if delivery.completed_at is not None:
         raise Conflict("Completed delivery proofs are immutable")
     db.add(operation)
     # Commit ownership before I/O. Reserved rows may have uncertain external outcomes.
-    await db.flush()
-    operation_identity = {
-        column.key: getattr(operation, column.key) for column in ProofUploadOperation.__table__.columns
-    }
-    await get_current_user(request, db)
     await db.commit()
     try:
         try:
@@ -142,19 +107,17 @@ async def upload_proof(
             Role.SUPER_ADMIN.value, Role.WAREHOUSE_MANAGER.value, Role.DELIVERY_PARTNER.value,
         }:
             raise Forbidden("Proof upload is no longer permitted")
-        delivery = await visible_delivery(
-            db, current_user, delivery_id, lock=True, require_open=True,
-        )
+        delivery = await visible_delivery(db, current_user, delivery_id, lock=True)
         if delivery.completed_at is not None:
             raise Conflict("Completed delivery proofs are immutable")
         operation = (await db.execute(select(ProofUploadOperation).where(
-            *(getattr(ProofUploadOperation, key) == value for key, value in operation_identity.items()),
-            ProofUploadOperation.delivery_id == delivery_id,
+            ProofUploadOperation.id == operation.id,
             ProofUploadOperation.tenant_id == current_user.tenant_id,
             ProofUploadOperation.uploaded_by == current_user.id,
         ).with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
         if operation is None or operation.state != "reserved":
             raise Conflict("Proof upload reservation is not valid")
+        await get_current_user(request, db)
         if backend == "supabase" and (
             stored is None or stored.key != operation.object_key or stored.operation_id != operation.id
             or not isinstance(stored.object_id, uuid.UUID) or not isinstance(stored.version, uuid.UUID)
@@ -171,29 +134,22 @@ async def upload_proof(
         )
         operation.state = "committed"
         db.add(proof)
-        await audit(db, tenant_id=current_user.tenant_id,
-                    actor_id=current_user.id, actor_email=current_user.email,
+        await audit(db, tenant_id=user.tenant_id, actor_id=user.id, actor_email=user.email,
                     action="deliveries.proof_upload", resource_type="delivery_proof", resource_id=str(proof.id),
                     meta={"delivery_id": str(delivery.id), "kind": kind, "size_bytes": len(data)})
-        await db.flush()
-        response = ProofOut(
-            id=proof.id, delivery_id=proof.delivery_id, kind=proof.kind,
-            mime_type=proof.mime_type, size_bytes=proof.size_bytes, created_at=proof.created_at,
-            url=f"{service.PROOF_PREFIX}{proof.id}",
-        )
-        await get_current_user(request, db)
         await db.commit()
     except BaseException:
         # Never delete on rollback: a lost COMMIT reply is not proof of no receipt.
         await db.rollback()
         raise
-    return response
+    await db.refresh(proof)
+    return ProofOut(id=proof.id, delivery_id=proof.delivery_id, kind=proof.kind, mime_type=proof.mime_type,
+                    size_bytes=proof.size_bytes, created_at=proof.created_at, url=f"{service.PROOF_PREFIX}{proof.id}")
 
 
 @router.get("/delivery-proofs/{proof_id}")
 async def read_proof(
-    proof_id: uuid.UUID, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(get_current_user),
+    proof_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(get_current_user),
     store: ProofStore = Depends(get_proof_store),
 ):
     proof = (await db.execute(select(DeliveryProof).where(
@@ -202,21 +158,9 @@ async def read_proof(
     if proof is None:
         raise NotFound("Proof not found")
     await visible_delivery(db, user, proof.delivery_id)
-    identity = {column.key: getattr(proof, column.key) for column in DeliveryProof.__table__.columns}
     data = await service.read_stored_proof(db, proof, store=store)
-    # I/O is unlocked; publish only if this exact receipt and current access still survive.
-    user = await lock_current_user(request, db)
-    await visible_delivery(db, user, identity["delivery_id"], lock=True)
-    proof = (await db.execute(select(DeliveryProof).where(
-        *(getattr(DeliveryProof, key) == value for key, value in identity.items()),
-    ).with_for_update(read=True).execution_options(populate_existing=True))).scalar_one_or_none()
-    if proof is None:
-        raise Conflict("Private proof identity changed during read")
-    await service.validate_proof_ownership(db, proof, lock=True)
     extension = "png" if proof.mime_type == "image/png" else "jpg"
-    response = Response(data, media_type=proof.mime_type, headers={
+    return Response(data, media_type=proof.mime_type, headers={
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
         "Content-Disposition": f'inline; filename="proof-{proof.id}.{extension}"',
     })
-    await get_current_user(request, db)
-    return response

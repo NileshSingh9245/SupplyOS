@@ -41,8 +41,7 @@
     ".runtime/release-security-prod/types/**/*.ts",
     ".runtime/release-security-prod/dev/types/**/*.ts",
     ".runtime/release-security-dev/types/**/*.ts",
-    ".runtime/release-security-dev/dev/types/**/*.ts",
-    ".runtime/preview/dev/types/**/*.ts"
+    ".runtime/release-security-dev/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

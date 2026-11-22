@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import secrets
 import uuid
-import re
-from collections.abc import Mapping
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,18 +22,14 @@ from app.core.exceptions import (
     Conflict, DomainError, Forbidden, NotFound,
 )
 from app.features.inventory import service as inv_service
-from app.features.orders.amounts import calculate_line
 from app.features.payments import service as payment_service
 from app.features.pricing.service import resolved_products
-from app.features.pricing.schemas import ResolvedProduct
-from app.features.pricing.repositories import currency as recorded_currency
 from app.infrastructure.db.models.inventory import InventoryItem, StockMovement
 from app.infrastructure.db.models.order import (
-    Delivery, Order, OrderItem, OrderReservation,
+    Delivery, Order, OrderItem, OrderReservation, OrderStatusHistory,
 )
 from app.infrastructure.db.models.warehouse import Warehouse
 from app.shared.audit import audit
-from app.shared.order_events import record_status
 
 
 # Valid transitions
@@ -61,7 +55,12 @@ async def _record_status(
     db: AsyncSession, *, order: Order, to_status: str, actor_id: uuid.UUID | None,
     note: str | None = None,
 ) -> None:
-    await record_status(db, order=order, to_status=to_status, actor_id=actor_id, note=note)
+    hist = OrderStatusHistory(
+        tenant_id=order.tenant_id, order_id=order.id,
+        from_status=order.status, to_status=to_status,
+        actor_id=actor_id, note=note,
+    )
+    db.add(hist)
 
 
 async def create_order(
@@ -70,7 +69,6 @@ async def create_order(
     scheduled_delivery_date=None, delivery_address: str | None = None,
     notes: str | None = None, created_by: uuid.UUID | None = None,
     is_credit: bool = False, payment_mode: str | None = None,
-    pricing_snapshot: Mapping[uuid.UUID, ResolvedProduct] | None = None,
 ) -> Order:
     """items: [{product_id: UUID, quantity: Decimal}, ...]
 
@@ -94,9 +92,6 @@ async def create_order(
         raise Conflict("Conflicting requested payment modes")
     if resolved_mode == "credit" and customer.customer_type != "credit":
         raise Conflict("Credit is not enabled for this customer")
-    currency_code = await recorded_currency(db, tenant_id)
-    if not isinstance(currency_code, str) or not re.fullmatch(r"[A-Z]{3}", currency_code):
-        raise Conflict("Order currency needs reviewed business configuration")
     for value, maximum, name in ((channel, 20, "Channel"), (notes, 500, "Notes"),
                                   (delivery_address, 500, "Delivery address")):
         if value is not None and len(value) > maximum:
@@ -108,7 +103,7 @@ async def create_order(
         raise NotFound("Warehouse not found")
 
     # Mutable product/tier/override values must not be reread between order lines.
-    pricing = pricing_snapshot if pricing_snapshot is not None else await resolved_products(
+    pricing = await resolved_products(
         db, tenant_id=tenant_id, customer_id=customer_id,
         product_ids={line["product_id"] for line in items},
     )
@@ -121,7 +116,6 @@ async def create_order(
         scheduled_delivery_date=scheduled_delivery_date,
         delivery_address=delivery_address or customer.address,
         notes=notes, created_by=created_by,
-        meta={"order_currency_snapshot": {"version": 1, "code": currency_code}},
     )
     db.add(order)
     await db.flush()
@@ -135,17 +129,27 @@ async def create_order(
         if not product:
             raise NotFound(f"Product {product_id} not found")
 
-        amounts = calculate_line(product.price, product.gst_rate, quantity=qty)
+        unit_price = payment_service.validated_decimal(product.price, name="Resolved unit price")
+        gst_rate = payment_service.validated_decimal(
+            product.gst_rate, name="GST rate", precision=5,
+        )
+        with localcontext() as decimal_context:
+            decimal_context.prec = 50
+            line_sub = (unit_price * qty).quantize(Decimal("0.01"))
+            line_tax = (line_sub * gst_rate / Decimal("100")).quantize(Decimal("0.01"))
+            line_total = line_sub + line_tax
+        for amount in (line_sub, line_tax, line_total):
+            payment_service.validated_decimal(amount, name="Line amount")
 
         item = OrderItem(
             tenant_id=tenant_id, order_id=order.id, product_id=product.id,
             product_sku=product.sku, product_name=product.name,
-            quantity=qty, unit_price=amounts.unit_price, gst_rate=amounts.gst_rate,
-            line_subtotal=amounts.subtotal, line_tax=amounts.tax, line_total=amounts.total,
+            quantity=qty, unit_price=unit_price, gst_rate=gst_rate,
+            line_subtotal=line_sub, line_tax=line_tax, line_total=line_total,
         )
         db.add(item)
-        subtotal += amounts.subtotal
-        tax_total += amounts.tax
+        subtotal += line_sub
+        tax_total += line_tax
 
     order.subtotal = payment_service.validated_decimal(subtotal, name="Order subtotal")
     order.tax_total = payment_service.validated_decimal(tax_total, name="Order tax")
@@ -369,7 +373,7 @@ async def _deliver_locked(
     await _record_status(db, order=order, to_status=OrderStatus.DELIVERED.value, actor_id=actor_id)
     await _transition(order, OrderStatus.DELIVERED.value)
     order.delivered_at = datetime.now(timezone.utc)
-    await payment_service.mark_paid(db, order=order, actor_id=actor_id)
+    payment_service.mark_paid(db, order=order, actor_id=actor_id)
     return order
 
 

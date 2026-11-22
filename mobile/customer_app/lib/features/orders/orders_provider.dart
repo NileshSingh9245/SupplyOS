@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supplyos_core/supplyos_core.dart';
 
-import '../../core/customer_contract.dart';
 import '../auth/auth_provider.dart';
 import 'order.dart';
 
@@ -27,67 +26,6 @@ final ordersQuery = SessionQuery<Paginated<Order>, int>(
 );
 
 final ordersProvider = ordersQuery.provider;
-
-const orderFilterStatuses = [
-  'pending',
-  'confirmed',
-  'reserved',
-  'picked',
-  'packed',
-  'out_for_delivery',
-  'delivered',
-  'paid',
-  'completed',
-  'cancelled',
-];
-
-class OrderFilter {
-  const OrderFilter({this.search = '', this.status});
-  final String search;
-  final String? status;
-
-  Map<String, Object?> parameters(int page) {
-    if (page < 1 ||
-        search.length > 200 ||
-        (status != null && !orderFilterStatuses.contains(status))) {
-      throw const AppFailure(FailureKind.invalidRequest);
-    }
-    return {
-      'page': page,
-      'page_size': ordersPageSize,
-      if (search.isNotEmpty) 'q': search,
-      if (status != null) 'status': status,
-    };
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is OrderFilter && search == other.search && status == other.status;
-  @override
-  int get hashCode => Object.hash(search, status);
-}
-
-final orderFilterProvider = StateProvider.autoDispose
-    .family<OrderFilter, SessionKey>((ref, scope) => const OrderFilter());
-
-final filteredOrdersQuery = SessionQuery<Paginated<Order>, (OrderFilter, int)>(
-  sessionProvider: authProvider,
-  load: (session, scope, argument, token) async {
-    final result = Paginated<Order>.fromJson(
-        await session.get('/orders',
-            scope: scope,
-            queryParameters: argument.$1.parameters(argument.$2),
-            cancelToken: token),
-        Order.fromJson);
-    result.requirePage(argument.$2, ordersPageSize);
-    requireUniqueIds(result.items, (order) => order.id);
-    if (argument.$1.status != null &&
-        result.items.any((order) => order.status != argument.$1.status)) {
-      throw invalidResponse;
-    }
-    return result;
-  },
-);
 
 final orderQuery = SessionQuery<Order, String>(
   sessionProvider: authProvider,

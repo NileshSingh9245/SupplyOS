@@ -5,17 +5,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.enums import PaymentMode, Role
-from app.core.exceptions import Forbidden, NotFound
+from app.core.exceptions import NotFound
 from app.features.payments import service as payment_service
 from app.infrastructure.db.models.order import Payment
-from app.shared.deps import get_current_user, lock_current_user, require_roles
+from app.shared.deps import require_roles
 from app.shared import idempotency
 from app.shared.schemas import ORMModel
 
@@ -48,13 +48,9 @@ class PaymentOut(ORMModel):
 
 @router.post("", response_model=PaymentOut, status_code=201)
 async def record_payment(
-    payload: PaymentCreate, request: Request,
-    db: AsyncSession = Depends(get_db), user=Depends(require_finance_writer),
+    payload: PaymentCreate, db: AsyncSession = Depends(get_db), user=Depends(require_finance_writer),
     idempotency_key: uuid.UUID | None = Header(default=None, alias="X-Idempotency-Key"),
 ):
-    user = await lock_current_user(request, db)
-    if user.role not in {Role.SUPER_ADMIN.value, Role.ACCOUNTANT.value}:
-        raise Forbidden("Payment recording is not permitted")
     claim = await idempotency.claim(
         db, tenant_id=user.tenant_id, actor_id=user.id, operation="payments.record",
         key=idempotency_key, payload=payload,
@@ -66,9 +62,7 @@ async def record_payment(
         ))).scalar_one_or_none()
         if visible is None:
             raise NotFound("Payment not found")
-        response = PaymentOut.model_validate(claim.response_body)
-        await get_current_user(request, db)
-        return response
+        return PaymentOut.model_validate(claim.response_body)
     payment = await payment_service.record_payment(
         db, tenant_id=user.tenant_id, customer_id=payload.customer_id,
         order_id=payload.order_id, amount=payload.amount, mode=payload.mode.value,
@@ -79,8 +73,6 @@ async def record_payment(
     idempotency.remember(
         claim, response=response, status_code=201, resource_type="payment", resource_id=payment.id,
     )
-    await db.flush()
-    await get_current_user(request, db)
     await db.commit()
     return response
 

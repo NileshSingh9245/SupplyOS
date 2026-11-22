@@ -31,11 +31,10 @@ List<String> sessionCookies(String marker, {bool secure = true}) => [
 ];
 
 class OfflineRequest {
-  const OfflineRequest(this.options, this.body, {this.encodedBody});
+  const OfflineRequest(this.options, this.body);
 
   final RequestOptions options;
   final Object? body;
-  final String? encodedBody;
 
   String get path => options.path;
   String get method => options.method;
@@ -48,25 +47,20 @@ class OfflineResponse {
     this.status = 200,
     this.cookies = const [],
     this.isRedirect = false,
-    this.rawBody,
-    this.headers = const {},
   });
 
   final Object? data;
   final int status;
   final List<String> cookies;
   final bool isRedirect;
-  final String? rawBody;
-  final Map<String, List<String>> headers;
 
   ResponseBody toBody() => ResponseBody.fromString(
-    rawBody ?? (status == 204 ? '' : jsonEncode(data)),
+    status == 204 ? '' : jsonEncode(data),
     status,
     isRedirect: isRedirect,
     headers: {
       Headers.contentTypeHeader: [Headers.jsonContentType],
       if (cookies.isNotEmpty) 'set-cookie': cookies,
-      ...headers,
     },
   );
 }
@@ -131,9 +125,8 @@ class OfflineAdapter implements HttpClientAdapter {
         bytes.addAll(chunk);
       }
     }
-    final encoded = bytes.isEmpty ? null : utf8.decode(bytes);
-    final body = encoded == null ? null : jsonDecode(encoded);
-    final request = OfflineRequest(options, body, encodedBody: encoded);
+    final body = bytes.isEmpty ? null : jsonDecode(utf8.decode(bytes));
+    final request = OfflineRequest(options, body);
     backend._record(request);
     // Deliberately allow delayed fixture replies after cancellation/close.
     // The session, not the fixture adapter, must reject stale work.
