@@ -69,6 +69,7 @@ async def create_order(
     scheduled_delivery_date=None, delivery_address: str | None = None,
     notes: str | None = None, created_by: uuid.UUID | None = None,
     is_credit: bool = False, payment_mode: str | None = None,
+    pricing_snapshot: dict | None = None,
 ) -> Order:
     """items: [{product_id: UUID, quantity: Decimal}, ...]
 
@@ -103,10 +104,12 @@ async def create_order(
         raise NotFound("Warehouse not found")
 
     # Mutable product/tier/override values must not be reread between order lines.
-    pricing = await resolved_products(
-        db, tenant_id=tenant_id, customer_id=customer_id,
-        product_ids={line["product_id"] for line in items},
-    )
+    if pricing_snapshot is None:
+        pricing_snapshot = await resolved_products(
+            db, tenant_id=tenant_id, customer_id=customer_id,
+            product_ids={line["product_id"] for line in items},
+        )
+    pricing = pricing_snapshot
 
     order = Order(
         tenant_id=tenant_id, order_number=_next_order_number(),

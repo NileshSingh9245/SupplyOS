@@ -30,7 +30,8 @@ class PrivateInputRoute(APIRoute):
             except Exception as error:
                 logging.getLogger(__name__).error("Private API request failed (%s)", type(error).__name__)
                 response = JSONResponse(status_code=500, content={"detail": "Request could not be completed"})
-            response.headers["Cache-Control"] = "no-store"
+            if "Cache-Control" not in response.headers:
+                response.headers["Cache-Control"] = "no-store"
             return response
 
         return handle
