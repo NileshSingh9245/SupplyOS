@@ -53,8 +53,7 @@ export default function SetupPage() {
   const [blocked, setBlocked] = useState<"initialized" | "unconfigured" | null>(null);
   const mounted = useRef(false);
   const pending = useRef<AbortController | null>(null);
-  const warehouseId = useRef(0);
-  const blankWarehouse = { ...blankWarehouseBase, id: `w-${warehouseId.current++}` };
+  const blankWarehouse = { ...blankWarehouseBase };
   const { register, control, trigger, handleSubmit, resetField, getValues, setFocus, formState: { errors } } = useForm<SetupFields>({
     resolver: zodResolver(setupSchema), mode: "onChange",
     defaultValues: {
@@ -294,7 +293,7 @@ export default function SetupPage() {
                 const codes = new Set(getValues("warehouses").map((warehouse) => warehouse.code.trim()));
                 let number = warehouses.length + 1;
                 while (codes.has(`WH-${number}`)) number += 1;
-                append({ ...blankWarehouseBase, id: `w-${warehouseId.current++}`, code: `WH-${number}`, name: "" });
+                append({ ...blankWarehouseBase, code: `WH-${number}`, name: "" });
               }}>
               + Add another warehouse
             </button>
