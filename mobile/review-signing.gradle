@@ -1,0 +1,166 @@
+import java.nio.charset.StandardCharsets
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.cert.X509Certificate
+
+def android = extensions.getByName('android')
+def reviewSigning = android.signingConfigs.create('isolatedReview')
+def keystorePath = providers.environmentVariable('SUPPLYOS_REVIEW_KEYSTORE').orNull
+reviewSigning.storeFile = keystorePath ? file(keystorePath) : null
+reviewSigning.storeType = 'PKCS12'
+reviewSigning.storePassword = providers.environmentVariable('SUPPLYOS_REVIEW_STORE_PASSWORD').orNull
+reviewSigning.keyAlias = providers.environmentVariable('SUPPLYOS_REVIEW_KEY_ALIAS').orNull
+reviewSigning.keyPassword = providers.environmentVariable('SUPPLYOS_REVIEW_KEY_PASSWORD').orNull
+
+android.flavorDimensions.add('distribution')
+android.productFlavors {
+    production {
+        dimension = 'distribution'
+    }
+    review {
+        dimension = 'distribution'
+        applicationIdSuffix = '.review'
+        versionNameSuffix = '-review'
+        signingConfig = reviewSigning
+    }
+}
+
+// A side-by-side review NDK can live off the system drive without moving the user's SDK.
+def ndkPath = providers.environmentVariable('SUPPLYOS_REVIEW_NDK_PATH').orNull
+if (ndkPath) {
+    def ndkProperties = new Properties()
+    def sourceProperties = new File(ndkPath, 'source.properties')
+    if (!sourceProperties.isFile()) {
+        throw new GradleException('The external review NDK is incomplete.')
+    }
+    sourceProperties.withInputStream { ndkProperties.load(it) }
+    if (ndkProperties.getProperty('Pkg.Revision') != android.ndkVersion) {
+        throw new GradleException('The external review NDK must match the cached Flutter requirement.')
+    }
+    android.ndkPath = ndkPath
+}
+
+def verifyRelease = { signing ->
+    def releaseType = android.buildTypes.getByName('release')
+    if (releaseType.debuggable || releaseType.jniDebuggable || !signing ||
+        signing.name.equalsIgnoreCase('debug') || !signing.storeFile?.isFile() ||
+        signing.storeFile.name.equalsIgnoreCase('debug.keystore') ||
+        !signing.storePassword || !signing.keyPassword || !signing.keyAlias ||
+        signing.keyAlias.equalsIgnoreCase('AndroidDebugKey')) {
+        throw new GradleException(
+            'Release artifacts are held until private non-debug signing is configured externally.'
+        )
+    }
+}
+
+def verifyReview = {
+    def flavor = android.productFlavors.getByName('review')
+    def signing = android.buildTypes.getByName('release').signingConfig ?: flavor.signingConfig
+    verifyRelease(signing)
+    if (signing != reviewSigning || flavor.applicationIdSuffix != '.review' ||
+        flavor.versionNameSuffix != '-review' || flavor.applicationId ||
+        android.defaultConfig.applicationId != android.namespace) {
+        throw new GradleException('Review signing and package identity must remain isolated from production.')
+    }
+    def expected = providers.environmentVariable('SUPPLYOS_REVIEW_CERT_SHA256').orNull
+    if (!expected || !(expected ==~ /[A-Fa-f0-9]{64}/)) {
+        throw new GradleException('Review signing requires the dedicated public certificate SHA256 reference.')
+    }
+    try {
+        def store = KeyStore.getInstance('PKCS12')
+        signing.storeFile.withInputStream { store.load(it, signing.storePassword.toCharArray()) }
+        def certificate = store.getCertificate(signing.keyAlias)
+        if (!(certificate instanceof X509Certificate) || !store.isKeyEntry(signing.keyAlias) ||
+            !store.getKey(signing.keyAlias, signing.keyPassword.toCharArray()) ||
+            !certificate.subjectX500Principal.name.contains('OU=SupplyOS Android Review') ||
+            certificate.subjectX500Principal.name.toLowerCase(Locale.ROOT).contains('android debug')) {
+            throw new IllegalStateException()
+        }
+        certificate.checkValidity()
+        def fingerprint = MessageDigest.getInstance('SHA-256').digest(certificate.encoded).encodeHex().toString()
+        if (!fingerprint.equalsIgnoreCase(expected)) {
+            throw new IllegalStateException()
+        }
+        return fingerprint
+    } catch (Exception ignored) {
+        // Keystore/provider errors can contain private input. Never attach their original cause.
+        throw new GradleException('The dedicated review key and public certificate reference could not be verified.')
+    }
+}
+
+def verifyApi = {
+    def origin = providers.environmentVariable('SUPPLYOS_REVIEW_API_ORIGIN').orNull
+    def valid = false
+    try {
+        def uri = new URI(origin ?: '')
+        def host = uri.host?.toLowerCase(Locale.ROOT)
+        def forbidden = ['localhost', 'local', 'internal', 'lan', 'home', 'home.arpa', 'corp',
+                         'intranet', 'private', 'onion', 'localtest.me', 'lvh.me', 'localhost.direct',
+                         'nip.io', 'sslip.io', 'test', 'invalid', 'example', 'example.com',
+                         'example.net', 'example.org', 'ngrok.io', 'ngrok-free.app', 'trycloudflare.com']
+        def base = origin ? origin + '/api/v1' : null
+        def defines = (project.findProperty('dart-defines') ?: '').toString().split(',').findAll { it }
+            .collect { new String(Base64.decoder.decode(it), StandardCharsets.UTF_8) }
+        def apiDefines = defines.findAll { it.startsWith('SUPPLYOS_API_BASE=') }
+        valid = origin && !origin.matches('.*[\\s\\\\%@].*') && uri.scheme == 'https' &&
+            !uri.rawUserInfo && !uri.rawQuery && !uri.rawFragment && !uri.rawPath &&
+            (uri.port == -1 || (uri.port > 0 && uri.port <= 65535)) && host && host.length() <= 253 &&
+            host.matches('[a-z0-9-]+(?:\\.[a-z0-9-]+)+') && host.matches('.*\\.[a-z]{2,63}') &&
+            host.split('\\.').every { it.length() <= 63 && !it.startsWith('-') && !it.endsWith('-') } &&
+            !forbidden.any { host == it || host.endsWith('.' + it) } &&
+            !host.matches('.*(placeholder|your-?(api|domain|host)|change-?me).*') &&
+            apiDefines == ['SUPPLYOS_API_BASE=' + base]
+    } catch (Exception ignored) {
+        valid = false
+    }
+    if (!valid) {
+        throw new GradleException(
+            'Review APKs are held until a parent-verified public HTTPS API origin and matching Dart define are supplied.'
+        )
+    }
+}
+
+// Resolve the effective flavor signing, not just the release build type's intentionally null key.
+gradle.taskGraph.whenReady { graph ->
+    def releaseTasks = graph.allTasks.findAll { it.project == project && it.name.contains('Release') }
+    if (releaseTasks) {
+        def production = releaseTasks.any { it.name.contains('ProductionRelease') }
+        def review = releaseTasks.any { it.name.contains('ReviewRelease') }
+        if (production || !review) {
+            def signing = android.buildTypes.getByName('release').signingConfig ?:
+                android.productFlavors.getByName('production').signingConfig ?: android.defaultConfig.signingConfig
+            verifyRelease(signing)
+            if (signing == reviewSigning || signing.storeFile == reviewSigning.storeFile) {
+                throw new GradleException('Dedicated review signing cannot sign production artifacts.')
+            }
+        }
+        if (review) {
+            verifyReview()
+            if (releaseTasks.any {
+                it.name == 'compileFlutterBuildReviewRelease' || it.name.startsWith('packageReviewRelease') ||
+                it.name.startsWith('bundleReviewRelease') || it.name == 'assembleReviewRelease'
+            }) {
+                verifyApi()
+            }
+        }
+    }
+}
+
+tasks.register('verifyReviewPreparation') {
+    group = 'verification'
+    description = 'Verify isolated review identity and real private signing without producing a client APK.'
+    doLast {
+        def fingerprint = verifyReview()
+        def production = android.productFlavors.getByName('production')
+        if (production.signingConfig || android.defaultConfig.signingConfig ||
+            android.buildTypes.getByName('release').signingConfig || production.applicationIdSuffix) {
+            throw new GradleException('Preparation must preserve the unsigned production identity and release hold.')
+        }
+        logger.lifecycle('Review package: ' + android.defaultConfig.applicationId + '.review')
+        logger.lifecycle('Review version suffix: -review; debuggable=false; jniDebuggable=false')
+        logger.lifecycle('SDK compile/target: ' + android.compileSdkVersion + '/' + android.defaultConfig.targetSdkVersion.apiLevel)
+        logger.lifecycle('Build tools: ' + android.buildToolsVersion + '; NDK: ' + android.ndkVersion)
+        logger.lifecycle('Public review certificate SHA256: ' + fingerprint)
+        logger.lifecycle('Production signing remains unconfigured; final review APKs require a verified API origin.')
+    }
+}

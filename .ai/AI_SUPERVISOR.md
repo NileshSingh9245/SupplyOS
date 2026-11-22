@@ -13,9 +13,8 @@ class AIProvider(Protocol):
 ```
 
 Implementations:
-- `ClaudeProvider` (default) via `emergentintegrations.llm.chat.LlmChat` with model `claude-sonnet-4-5-20250929`.
-- `OpenAIProvider` (future) — swap by config `AI_PROVIDER=openai`.
-- `GeminiProvider` (future) — swap by config `AI_PROVIDER=gemini`.
+- `AnthropicProvider` uses the direct Messages API with an owner-configured `ANTHROPIC_API_KEY` and `AI_MODEL`; optional and disabled when no key is configured.
+- Other providers are future adapters; a configuration flag alone does not implement them.
 
 The rest of the code depends only on the protocol, never on the concrete provider.
 

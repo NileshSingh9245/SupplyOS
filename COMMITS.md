@@ -1,4 +1,4 @@
-# Commit plan (push via Emergent "Save to GitHub")
+# Historical Commit Plan
 
 Squash the current working tree into these commits (in order) for a clean history on
 `https://github.com/NileshSingh9245/SupplyOS.git`:
@@ -86,4 +86,4 @@ Squash the current working tree into these commits (in order) for a clean histor
 - `README.md`
 - `CHANGELOG.md`
 
-**When ready to push**, click **Save to GitHub** in Emergent chat — it will commit everything on the current branch to `NileshSingh9245/SupplyOS`. Squash locally with `git rebase -i` if you want the plan above.
+This is historical planning, not release evidence or authorization. Commit/push only when explicitly requested, using normal noninteractive Git/GitHub tooling and staging only intended reviewed files; never publish private configuration or generated dependencies.

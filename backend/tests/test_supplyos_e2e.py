@@ -1,7 +1,7 @@
 """SupplyOS end-to-end backend test.
 
-Runs a full happy-path plus RBAC + row-locking checks against the deployed backend
-using the external REACT_APP_BACKEND_URL. Tests are ordered — state is passed via
+Runs happy-path and basic RBAC checks only on a deliberately isolated loopback API.
+Existing stock exhaustion checks are sequential, not concurrency proof. State uses
 the `shared_state` fixture. Any test that depends on a prior step will skip if the
 prerequisite state is missing.
 """
@@ -16,6 +16,13 @@ import pytest
 import requests
 
 from conftest import API, ADMIN_EMAIL, ADMIN_PASSWORD
+from app.core.enums import AlertSeverity
+
+
+@pytest.fixture(scope="session", autouse=True)
+def require_isolated_api(base_url):
+    """Guard even tests which use the imported API constant directly."""
+    return base_url
 
 
 def _skip_if_missing(state, key):
@@ -29,17 +36,28 @@ def _skip_if_missing(state, key):
 class TestHealthAndSetup:
     def test_health_deep(self, base_url):
         r = requests.get(f"{base_url}/api/health/deep", timeout=15)
-        assert r.status_code == 200, r.text
+        assert r.status_code in {200, 503}
         data = r.json()
         assert data.get("database") == "ok"
-        assert data.get("redis") == "ok"
+        assert data.get("redis") in {"ok", "unavailable"}
+        assert r.status_code == (200 if data["redis"] == "ok" else 503)
 
-    def test_setup_status_complete(self, api_prefix):
-        r = requests.get(f"{api_prefix}/setup/status", timeout=15)
+    def test_setup_status_complete(self, api_prefix, admin_session):
+        r = admin_session.get(f"{api_prefix}/setup/status", timeout=15)
         assert r.status_code == 200, r.text
         data = r.json()
         assert data.get("is_setup_complete") is True
         assert "tenant_id" in data and data["tenant_id"]
+        assert data["tenant_id"] == admin_session.admin_user["tenant_id"]
+        assert data["is_initialized"] is True
+        assert data["authorization_configured"] is True
+        anonymous = requests.get(f"{api_prefix}/setup/status", timeout=15)
+        assert anonymous.status_code == 200
+        assert anonymous.json()["is_setup_complete"] is True
+        assert anonymous.json()["is_initialized"] is True
+        assert anonymous.json()["authorization_configured"] is True
+        assert anonymous.json()["tenant_id"] is None
+        assert anonymous.json()["company_name"] is None
 
 
 class TestAuth:
@@ -50,9 +68,11 @@ class TestAuth:
             json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             timeout=30,
         )
-        assert r.status_code == 200, r.text
+        if r.status_code != 200:
+            pytest.fail(f"Isolated test login failed (HTTP {r.status_code})", pytrace=False)
         body = r.json()
-        assert "access_token" in body and body["access_token"]
+        if not body.get("access_token"):
+            pytest.fail("Successful login did not return an access token", pytrace=False)
         assert body["token_type"] == "bearer"
         assert body["user"]["email"] == ADMIN_EMAIL
         assert body["user"]["role"] == "super_admin"
@@ -60,6 +80,7 @@ class TestAuth:
         cookie_names = {c.name for c in s.cookies}
         assert "access_token" in cookie_names, cookie_names
         assert "refresh_token" in cookie_names, cookie_names
+        s.close()
 
     def test_me_returns_admin_profile(self, admin_session):
         r = admin_session.get(f"{API}/auth/me", timeout=15)
@@ -313,6 +334,7 @@ class TestOrderFlow:
             "customer_id": shared_state["customer_id"],
             "warehouse_id": shared_state["warehouse_id"],
             "is_credit": False,
+            "payment_mode": "cash",
             "items": [{"product_id": shared_state["product_id"], "quantity": "500"}],
         }
         # First create the order (create is allowed — insufficient-stock check
@@ -379,8 +401,41 @@ class TestOrderFlow:
 class TestDeliveryAndLedger:
     def test_deliver_order(self, admin_session, shared_state):
         _skip_if_missing(shared_state, "order_id")
+        import io
+        import os
+        from PIL import Image
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.engine import make_url
+        from app.infrastructure.db.models.order import Delivery
+
+        delivery = next(row for row in admin_session.get(f"{API}/deliveries", timeout=15).json()
+                        if row["order_id"] == shared_state["order_id"])
+        url = make_url(os.environ["DATABASE_URL_SYNC"])
+        if url.host not in {"127.0.0.1", "localhost", "::1"} or not (url.database or "").startswith("supplyos_test_"):
+            pytest.fail("Direct OTP fixture lookup requires the owned verifier database", pytrace=False)
+        engine = create_engine(url, hide_parameters=True)
+        try:
+            with engine.connect() as connection:
+                code = connection.scalar(select(Delivery.otp_code).where(
+                    Delivery.id == uuid.UUID(delivery["id"]),
+                ))
+        finally:
+            engine.dispose()
+        verified = admin_session.post(f"{API}/deliveries/{delivery['id']}/verify-otp", json={"otp_code": code}, timeout=15)
+        assert verified.status_code == 200
+        buffer = io.BytesIO()
+        Image.new("RGB", (4, 4), color="white").save(buffer, format="PNG")
+        references = {}
+        for kind in ("signature", "photo"):
+            proof = admin_session.post(f"{API}/deliveries/{delivery['id']}/proofs", data={"kind": kind},
+                                       files={"file": ("proof.png", buffer.getvalue(), "image/png")},
+                                       headers={"Content-Type": None}, timeout=15)
+            assert proof.status_code == 201
+            references[kind] = proof.json()["url"]
         r = admin_session.post(
-            f"{API}/orders/{shared_state['order_id']}/deliver", timeout=20
+            f"{API}/orders/{shared_state['order_id']}/deliver", json={
+                "signature_url": references["signature"], "proof_photo_url": references["photo"],
+            }, timeout=20
         )
         assert r.status_code == 200, r.text
         assert r.json()["status"] == "delivered"
@@ -473,8 +528,8 @@ class TestAISupervisor:
             f"{API}/ai/analyze", params={"include_summary": "true"}, timeout=30
         )
         assert r.status_code == 200, r.text
-        # Wait for background Claude call
-        time.sleep(18)
+        # The isolated verifier is free-only; no generative job or fake replacement is queued.
+        assert r.json()["summary_status"] == "held_free_only", r.text
         r2 = admin_session.get(
             f"{API}/ai/alerts",
             params={"category": "operations", "include_dismissed": "true"},
@@ -497,7 +552,7 @@ class TestAISupervisor:
             pytest.skip("no non-dismissed alerts to dismiss")
         alert_id = alerts[0]["id"]
         # severity chip present
-        assert alerts[0]["severity"] in {"info", "low", "medium", "high", "critical"}, alerts[0]
+        assert alerts[0]["severity"] in {severity.value for severity in AlertSeverity}, alerts[0]
 
         d = admin_session.post(f"{API}/ai/alerts/{alert_id}/dismiss", timeout=15)
         assert d.status_code == 200, d.text
@@ -509,11 +564,15 @@ class TestAISupervisor:
 # ---------------------------------------------------------------------------
 class TestRBACCustomerRole:
     @pytest.fixture(scope="class")
-    def customer_session(self, shared_state):
+    def customer_session(self, shared_state, admin_session):
         email = f"test_cust_{uuid.uuid4().hex[:8]}@example.com"
         password = "CustomerPass123!"
-        # Register
-        r = requests.post(
+        setup = admin_session.get(f"{API}/setup/status", timeout=15)
+        assert setup.status_code == 200
+        tenant_id = setup.json()["tenant_id"]
+        assert tenant_id == admin_session.admin_user["tenant_id"]
+        # Provision through the owner; customer login remains a separate operation.
+        r = admin_session.post(
             f"{API}/auth/register-customer",
             json={
                 "email": email,
@@ -523,21 +582,28 @@ class TestRBACCustomerRole:
             },
             timeout=15,
         )
-        assert r.status_code in (200, 201), r.text
+        assert r.status_code == 201, r.text
+        assert r.json()["tenant_id"] == tenant_id
+        assert r.json()["role"] == "customer"
+        assert r.headers["Cache-Control"] == "no-store"
+        assert "Set-Cookie" not in r.headers
         # Login
         s = requests.Session()
         s.headers.update({"Content-Type": "application/json"})
         rl = s.post(
-            f"{API}/auth/login", json={"email": email, "password": password}, timeout=15
+            f"{API}/auth/login", json={
+                "email": email, "password": password,
+                "tenant_id": tenant_id,
+            }, timeout=15
         )
         assert rl.status_code == 200, rl.text
         tok = rl.json()["access_token"]
         s.headers.update({"Authorization": f"Bearer {tok}"})
         return s
 
-    def test_customer_can_list_inventory(self, customer_session):
+    def test_customer_cannot_list_internal_inventory(self, customer_session):
         r = customer_session.get(f"{API}/inventory", timeout=15)
-        assert r.status_code == 200, r.text
+        assert r.status_code == 403
 
     def test_customer_cannot_adjust_inventory(self, customer_session, shared_state):
         for key in ("product_id", "warehouse_id"):

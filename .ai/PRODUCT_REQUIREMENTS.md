@@ -6,7 +6,7 @@ SupplyOS is an **AI-powered operating system** for wholesalers, distributors, wa
 ## Applications
 | # | App | Stack | Users |
 |---|-----|-------|-------|
-| 1 | Admin Dashboard | Next.js / React + TS + Tailwind | Super Admin, Warehouse Manager, Accountant |
+| 1 | Admin Application and Dashboard | Flutter native client + matching Next.js / React + TS + Tailwind web UI | Super Admin, Warehouse Manager, Accountant |
 | 2 | Customer Application | Flutter (iOS / Android / Web) | Customers |
 | 3 | Delivery Application | Flutter (Android / iOS) | Delivery Partners |
 | 4 | Backend API | FastAPI + PostgreSQL + Redis | All apps |

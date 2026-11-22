@@ -235,11 +235,18 @@ async def claude_summarize(db: AsyncSession, tenant_id: uuid.UUID) -> str | None
     )
     try:
         text = await provider.analyze(system_prompt=system, user_prompt=prompt, max_tokens=400)
-    except Exception as e:  # never let AI failure block the app
-        import traceback
-        tb = traceback.format_exc()
-        print(f"[ai-summary-error]\n{tb}", flush=True)
-        text = f"AI summary unavailable: {e.__class__.__name__}: {e}"
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("AI summary request failed (%s)", type(exc).__name__)
+        await _persist_alert(
+            db, tenant_id=tenant_id, category=AlertCategory.OPERATIONS,
+            severity=AlertSeverity.WARNING, title="AI Summary Unavailable",
+            message="The AI provider request failed. Verify the configured service and credentials.",
+            action_hint="Check the external-services setup guide.",
+            resource_type="tenant", resource_id=str(tenant_id), meta=metrics,
+        )
+        await db.commit()
+        return None
 
     await _persist_alert(
         db, tenant_id=tenant_id, category=AlertCategory.OPERATIONS,

@@ -29,10 +29,19 @@ ThemeData buildLightTheme() {
       centerTitle: false,
     ),
     textTheme: const TextTheme(
-      displayLarge: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: ink, letterSpacing: -1.2),
-      titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: ink),
+      displayLarge: TextStyle(
+          fontSize: 40,
+          fontWeight: FontWeight.w900,
+          color: ink,
+          letterSpacing: -1.2),
+      titleLarge:
+          TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: ink),
       bodyMedium: TextStyle(fontSize: 14, color: ink),
-      labelSmall: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: muted, letterSpacing: 2),
+      labelSmall: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: muted,
+          letterSpacing: 2),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(

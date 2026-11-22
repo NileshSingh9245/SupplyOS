@@ -8,7 +8,7 @@ from sqlalchemy import String, Boolean, DateTime, Index, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, TimestampMixin, UUIDPKMixin
+from app.infrastructure.db.base import Base, TimestampMixin, UUIDPKMixin
 from app.core.enums import AlertSeverity, AlertCategory
 
 

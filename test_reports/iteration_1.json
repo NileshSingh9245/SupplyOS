@@ -10,9 +10,9 @@
     "design_issues": []
   },
   "test_report_links": [
-    "/app/backend/tests/conftest.py",
-    "/app/backend/tests/test_supplyos_e2e.py",
-    "/app/test_reports/pytest/pytest_results.xml"
+    "backend/tests/conftest.py",
+    "backend/tests/test_supplyos_e2e.py",
+    "test_reports/pytest/pytest_results.xml"
   ],
   "action_items": [],
   "critical_code_review_comments": [
@@ -24,15 +24,15 @@
     "auth/router.COOKIE_KW has `secure=False`. Fine for local, but production deployment must set this from settings/environment (currently hard-coded)."
   ],
   "updated_files": [
-    "/app/backend/tests/conftest.py (new)",
-    "/app/backend/tests/test_supplyos_e2e.py (new)"
+    "backend/tests/conftest.py (new)",
+    "backend/tests/test_supplyos_e2e.py (new)"
   ],
   "success_rate": {"backend": "100%", "frontend": "not_tested"},
   "test_credentials": "admin@acme.com / AdminPass123! (super_admin). Registered ad-hoc customer users during the test run (email pattern: test_cust_<hex>@example.com / CustomerPass123!).",
   "seed_data_creation": "Suite creates fresh TEST_* products (SKU TEST-RICE-<hex>), warehouses (TEST-WH-<hex>), and one credit customer 'TEST Rajesh Kirana' per run. It also creates several orders (delivered + cancelled). Data is not torn down (backend has no cascade-delete endpoint exposed) — safe because everything is prefixed TEST_ and tenant-scoped.",
   "retest_needed": false,
   "main_agent_can_self_test": true,
-  "context_for_next_testing_agent": "Full happy-path passes. Test file /app/backend/tests/test_supplyos_e2e.py is idempotent — it always creates a NEW product+warehouse+customer per run, so it can be executed repeatedly without cleanup. Row-locking is confirmed working: the InsufficientStock message format is 'only <avail> of <needed> available'. Claude Sonnet 4.5 background summary path returns a valid message (no 'AttributeError'). If future runs add more RBAC roles, extend TestRBACCustomerRole. GST/currency defaults are in DEFAULTS map in /app/backend/app/features/settings/router.py (35 keys).",
+  "context_for_next_testing_agent": "Full happy-path passes. Test file backend/tests/test_supplyos_e2e.py is idempotent — it always creates a NEW product+warehouse+customer per run, so it can be executed repeatedly without cleanup. Row-locking is confirmed working: the InsufficientStock message format is 'only <avail> of <needed> available'. Claude Sonnet 4.5 background summary path returns a valid message (no 'AttributeError'). If future runs add more RBAC roles, extend TestRBACCustomerRole. GST/currency defaults are in DEFAULTS map in backend/app/features/settings/router.py (35 keys).",
   "verified_flows": [
     "GET /api/health/deep -> database=ok, redis=ok",
     "GET /api/v1/setup/status -> is_setup_complete=true",

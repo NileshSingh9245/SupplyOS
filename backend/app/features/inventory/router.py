@@ -5,7 +5,7 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ from app.infrastructure.db.models.inventory import InventoryItem, StockMovement
 from app.infrastructure.db.models.product import Product
 from app.infrastructure.db.models.warehouse import Warehouse
 from app.shared.audit import audit
-from app.shared.deps import get_current_user, require_admin_or_manager
+from app.shared.deps import require_admin_or_manager, require_staff
 from app.shared.schemas import ORMModel
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -42,6 +42,7 @@ class InventoryRowOut(BaseModel):
 
 
 class StockAdjustRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     product_id: uuid.UUID
     warehouse_id: uuid.UUID
     rack_id: uuid.UUID | None = None
@@ -66,13 +67,16 @@ async def list_inventory(
     q: str | None = None,
     low_stock_only: bool = False,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_staff),
 ):
     stmt = (
         select(InventoryItem, Product, Warehouse)
         .join(Product, Product.id == InventoryItem.product_id)
         .join(Warehouse, Warehouse.id == InventoryItem.warehouse_id)
-        .where(InventoryItem.tenant_id == user.tenant_id)
+        .where(
+            InventoryItem.tenant_id == user.tenant_id,
+            Product.tenant_id == user.tenant_id, Warehouse.tenant_id == user.tenant_id,
+        )
     )
     if product_id:
         stmt = stmt.where(InventoryItem.product_id == product_id)
@@ -100,7 +104,7 @@ async def list_inventory(
 
 
 @router.get("/stats", response_model=InventoryStats)
-async def inventory_stats(db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+async def inventory_stats(db: AsyncSession = Depends(get_db), user=Depends(require_staff)):
     # totals
     tot_prod = (await db.execute(
         select(func.count()).select_from(Product).where(Product.tenant_id == user.tenant_id, Product.is_active == True)  # noqa
@@ -114,7 +118,7 @@ async def inventory_stats(db: AsyncSession = Depends(get_db), user=Depends(get_c
     val = (await db.execute(
         select(func.coalesce(func.sum(InventoryItem.quantity * Product.base_price), 0))
         .join(Product, Product.id == InventoryItem.product_id)
-        .where(InventoryItem.tenant_id == user.tenant_id)
+        .where(InventoryItem.tenant_id == user.tenant_id, Product.tenant_id == user.tenant_id)
     )).scalar_one()
 
     # low stock / out of stock counts (per-product)
@@ -123,7 +127,9 @@ async def inventory_stats(db: AsyncSession = Depends(get_db), user=Depends(get_c
             Product.id, Product.low_stock_threshold,
             func.coalesce(func.sum(InventoryItem.quantity - InventoryItem.reserved_qty), 0).label("avail"),
         )
-        .join(InventoryItem, InventoryItem.product_id == Product.id, isouter=True)
+        .join(InventoryItem, (
+            (InventoryItem.product_id == Product.id) & (InventoryItem.tenant_id == user.tenant_id)
+        ), isouter=True)
         .where(Product.tenant_id == user.tenant_id, Product.is_active == True)  # noqa
         .group_by(Product.id, Product.low_stock_threshold)
     )).all()
@@ -197,9 +203,9 @@ class MovementOut(ORMModel):
 @router.get("/movements", response_model=list[MovementOut])
 async def list_movements(
     product_id: uuid.UUID | None = None,
-    limit: int = Query(50, le=200),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_staff),
 ):
     stmt = select(StockMovement).where(StockMovement.tenant_id == user.tenant_id)
     if product_id:

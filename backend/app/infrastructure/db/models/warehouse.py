@@ -7,7 +7,7 @@ from sqlalchemy import String, Boolean, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base, TimestampMixin, UUIDPKMixin
+from app.infrastructure.db.base import Base, TimestampMixin, UUIDPKMixin
 
 
 class Warehouse(Base, UUIDPKMixin, TimestampMixin):

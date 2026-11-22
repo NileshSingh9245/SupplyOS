@@ -5,14 +5,14 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.exceptions import Conflict, NotFound
 from app.infrastructure.db.models.warehouse import Warehouse, Rack, Shelf
-from app.shared.deps import get_current_user, require_admin_or_manager
+from app.shared.deps import get_current_user, require_admin_or_manager, require_staff
 from app.shared.schemas import ORMModel
 
 router = APIRouter(prefix="/warehouses", tags=["warehouses"])
@@ -30,6 +30,7 @@ class WarehouseOut(ORMModel):
 
 
 class WarehouseCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     code: str = Field(min_length=1, max_length=30)
     name: str = Field(min_length=1, max_length=200)
     address: str | None = None
@@ -46,6 +47,7 @@ class RackOut(ORMModel):
 
 
 class RackCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     warehouse_id: uuid.UUID
     code: str = Field(min_length=1, max_length=30)
     label: str = Field(min_length=1, max_length=120)
@@ -60,6 +62,7 @@ class ShelfOut(ORMModel):
 
 
 class ShelfCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     rack_id: uuid.UUID
     code: str = Field(min_length=1, max_length=30)
     label: str = Field(min_length=1, max_length=120)
@@ -92,7 +95,12 @@ async def create_warehouse(
 
 
 @router.get("/{warehouse_id}/racks", response_model=list[RackOut])
-async def list_racks(warehouse_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+async def list_racks(warehouse_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_staff)):
+    warehouse = (await db.execute(select(Warehouse.id).where(
+        Warehouse.id == warehouse_id, Warehouse.tenant_id == user.tenant_id,
+    ))).scalar_one_or_none()
+    if warehouse is None:
+        raise NotFound("Warehouse not found")
     rows = (await db.execute(
         select(Rack).where(Rack.tenant_id == user.tenant_id, Rack.warehouse_id == warehouse_id)
         .order_by(Rack.code)
@@ -124,7 +132,12 @@ async def create_rack(
 
 
 @router.get("/racks/{rack_id}/shelves", response_model=list[ShelfOut])
-async def list_shelves(rack_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+async def list_shelves(rack_id: uuid.UUID, db: AsyncSession = Depends(get_db), user=Depends(require_staff)):
+    rack = (await db.execute(select(Rack.id).where(
+        Rack.id == rack_id, Rack.tenant_id == user.tenant_id,
+    ))).scalar_one_or_none()
+    if rack is None:
+        raise NotFound("Rack not found")
     rows = (await db.execute(
         select(Shelf).where(Shelf.tenant_id == user.tenant_id, Shelf.rack_id == rack_id).order_by(Shelf.code)
     )).scalars().all()

@@ -1,45 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/api_client.dart';
+import 'package:supplyos_core/supplyos_core.dart';
 
-final routeProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final dio = ref.read(apiProvider);
-  final r = await dio.get('/deliveries/my-route');
-  return (r.data as List).cast<Map<String, dynamic>>();
-});
+import '../auth/auth_provider.dart';
+import 'route_provider.dart';
 
 class RouteScreen extends ConsumerWidget {
   const RouteScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(routeProvider);
+    if (ref.watch(authProvider.select((state) => state.key)) == null) {
+      return const SizedBox.shrink();
+    }
+    final async = ref.watch(routeProvider(null));
+    final refresh = ref.read(routeQuery.refreshProvider(null));
     return Scaffold(
-      appBar: AppBar(title: const Text('Today\'s Route')),
-      body: async.when(
-        data: (items) => items.isEmpty
-          ? const Center(child: Text('No stops scheduled.\nEnjoy the calm.', textAlign: TextAlign.center))
-          : ListView.separated(
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFF2E2E2E)),
-              itemBuilder: (_, i) {
-                final d = items[i];
-                return ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFD4FF00),
-                    foregroundColor: Colors.black,
-                    child: Text('${d['priority']}'),
+      appBar: AppBar(title: const Text('Assigned route'), actions: [
+        IconButton(
+            tooltip: 'Refresh route',
+            onPressed: async.isLoading ? null : refresh,
+            icon: const Icon(Icons.refresh)),
+        SessionLogoutButton(sessionProvider: authProvider),
+      ]),
+      body: RefreshIndicator(
+        onRefresh: refresh,
+        child: async.when(
+          skipLoadingOnRefresh: false,
+          skipLoadingOnReload: false,
+          data: (items) => ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: items.isEmpty ? 2 : items.length + 1,
+            separatorBuilder: (_, index) => const Divider(height: 1),
+            itemBuilder: (_, index) {
+              if (index == 0) {
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    'Your incomplete stops for today (UTC), including undated stops. Server priority order.',
                   ),
-                  title: Text('Order ${d['order_id'].toString().substring(0, 8)}'),
-                  subtitle: Text('OTP verified: ${d['otp_verified'] == true ? 'yes' : 'no'}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    // Detail screen with QR scanner, OTP verify, proof capture, collect payment
-                  },
                 );
-              },
-            ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Failed to load route: $e')),
+              }
+              if (items.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('No assigned stops.'),
+                );
+              }
+              final stop = items[index - 1];
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: const Color(0xFFD4FF00),
+                  foregroundColor: Colors.black,
+                  child: Text('${stop.priority}'),
+                ),
+                title: Text('Order ${shortId(stop.orderId)}'),
+                subtitle:
+                    Text('OTP verified: ${stop.isOtpVerified ? 'yes' : 'no'}'),
+              );
+            },
+          ),
+          loading: () => const ReadLoading(),
+          error: (error, stack) => ReadFeedback(
+            title: 'Unable to load route.',
+            message: AppFailure.safe(error).message,
+            onRetry: refresh,
+          ),
+        ),
       ),
     );
   }

@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: supplyos-backend
+    env: docker
+    repo: https://github.com/NileshSingh9245/SupplyOS.git
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    dockerContext: ..
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: FREE_ONLY_MODE
+        value: "true"
+      - key: APPROVED_FREE_SMTP
+        value: "false"
+      - key: API_V1_PREFIX
+        value: /api/v1
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_SYNC
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: COOKIE_SAMESITE
+        value: lax
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_PROVIDER
+        value: anthropic
+      - key: AI_MODEL
+        value: claude-sonnet-4-5-20250929
+      - key: SMTP_ENABLED
+        value: "false"
+      - key: APPROVED_FREE_STORAGE
+        value: "false"
+      - key: SUPABASE_VERSIONING_VERIFIED
+        value: "false"
+      - key: PROOF_STORAGE_BACKEND
+        value: local
+      - key: SETUP_AUTHORIZATION_TOKEN
+        sync: false
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+    disk:
+      name: supplyos-proofs
+      mountPath: /app/backend/.runtime/proofs
+      sizeGB: 10
+    healthCheckPath: /api/health
+
+databases:
+  - name: supplyos-postgres
+    databaseName: supplyos
+    user: supplyos
+    ipAllowList: []
