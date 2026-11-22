@@ -77,7 +77,7 @@ def require_credit_capacity(customer: Customer, *, additional: Decimal = Decimal
         raise CreditLimitExceeded("Customer balance and live commitments would exceed the credit limit")
 
 
-def mark_paid(db: AsyncSession, *, order: Order, actor_id: uuid.UUID | None) -> None:
+async def mark_paid(db: AsyncSession, *, order: Order, actor_id: uuid.UUID | None) -> None:
     if order.status == OrderStatus.DELIVERED.value and order.amount_paid == order.grand_total:
         db.add(OrderStatusHistory(
             tenant_id=order.tenant_id, order_id=order.id, from_status=order.status,
@@ -153,7 +153,7 @@ async def record_payment(
             customer.cash_funded_pending = validated_decimal(
                 customer.cash_funded_pending + amount, name="Pending cash funding",
             )
-        mark_paid(db, order=order, actor_id=actor_id)
+        await mark_paid(db, order=order, actor_id=actor_id)
     customer.outstanding = validated_decimal(
         customer.outstanding - amount, name="Customer balance", minimum=None,
     )

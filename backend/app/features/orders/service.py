@@ -373,7 +373,7 @@ async def _deliver_locked(
     await _record_status(db, order=order, to_status=OrderStatus.DELIVERED.value, actor_id=actor_id)
     await _transition(order, OrderStatus.DELIVERED.value)
     order.delivered_at = datetime.now(timezone.utc)
-    payment_service.mark_paid(db, order=order, actor_id=actor_id)
+    await payment_service.mark_paid(db, order=order, actor_id=actor_id)
     return order
 
 

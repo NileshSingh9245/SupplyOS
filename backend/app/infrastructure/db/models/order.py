@@ -76,6 +76,13 @@ class Order(Base, UUIDPKMixin, TimestampMixin):
     meta: Mapped[dict | None] = mapped_column(JSON, default=dict)
 
     @property
+    def currency_code(self) -> str | None:
+        snapshot = (self.meta or {}).get("order_currency_snapshot") if isinstance(self.meta, dict) else None
+        if isinstance(snapshot, dict):
+            return snapshot.get("code")
+        return None
+
+    @property
     def payment_status(self) -> str:
         if self.amount_paid == self.grand_total:
             return "paid"

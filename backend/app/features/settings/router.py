@@ -18,8 +18,9 @@ from app.core.database import get_db
 from app.infrastructure.db.models.tenant import Tenant
 from app.shared.audit import audit
 from app.shared.deps import get_current_user, require_admin
+from app.shared.private_route import PrivateInputRoute
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(prefix="/settings", tags=["settings"], route_class=PrivateInputRoute)
 
 
 DEFAULTS: dict[str, Any] = {

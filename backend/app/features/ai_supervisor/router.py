@@ -18,9 +18,10 @@ from app.features.ai_supervisor import service as ai_service
 from app.infrastructure.db.models.ai_alert import AIAlert
 from app.infrastructure.external.ai_provider import get_ai_provider
 from app.shared.deps import require_staff
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel
 
-router = APIRouter(prefix="/ai", tags=["ai_supervisor"])
+router = APIRouter(prefix="/ai", tags=["ai_supervisor"], route_class=PrivateInputRoute)
 
 
 class AlertOut(ORMModel):

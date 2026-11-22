@@ -18,9 +18,10 @@ from app.infrastructure.db.models.product import Product
 from app.infrastructure.db.models.warehouse import Warehouse
 from app.shared.audit import audit
 from app.shared.deps import require_admin_or_manager, require_staff
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel
 
-router = APIRouter(prefix="/inventory", tags=["inventory"])
+router = APIRouter(prefix="/inventory", tags=["inventory"], route_class=PrivateInputRoute)
 
 
 class InventoryRowOut(BaseModel):

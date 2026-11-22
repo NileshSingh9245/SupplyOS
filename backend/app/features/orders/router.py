@@ -23,9 +23,10 @@ from app.infrastructure.db.models.order import (
 from app.shared.audit import audit
 from app.shared import idempotency
 from app.shared.deps import get_current_user, require_admin_or_manager
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel, Paginated
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+router = APIRouter(prefix="/orders", tags=["orders"], route_class=PrivateInputRoute)
 
 
 class OrderLineIn(BaseModel):

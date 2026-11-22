@@ -21,9 +21,10 @@ from app.infrastructure.db.models.user import User
 from app.shared.audit import audit
 from app.shared import idempotency
 from app.shared.deps import get_current_user, lock_current_user, require_admin_or_manager, require_roles
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel
 
-router = APIRouter(prefix="/deliveries", tags=["deliveries"])
+router = APIRouter(prefix="/deliveries", tags=["deliveries"], route_class=PrivateInputRoute)
 require_delivery_reader = require_roles(
     Role.SUPER_ADMIN, Role.WAREHOUSE_MANAGER, Role.ACCOUNTANT, Role.DELIVERY_PARTNER, Role.CUSTOMER,
 )
@@ -58,6 +59,11 @@ class AssignRequest(BaseModel):
 class VerifyOTPRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     otp_code: str = Field(min_length=4, max_length=10, pattern=r"^[0-9]{4,10}$")
+
+    def model_dump(self, **kwargs):
+        data = super().model_dump(**kwargs)
+        data.pop("otp_code", None)
+        return data
 
 
 @router.get("", response_model=list[DeliveryOut])

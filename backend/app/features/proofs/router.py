@@ -23,9 +23,10 @@ from app.infrastructure.storage.contracts import (
 from app.infrastructure.storage.proof_store import ProofStore, get_proof_store
 from app.shared.audit import audit
 from app.shared.deps import get_current_user, lock_current_user, require_roles
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel
 
-router = APIRouter(tags=["delivery_proofs"])
+router = APIRouter(tags=["delivery_proofs"], route_class=PrivateInputRoute)
 require_proof_writer = require_roles(Role.SUPER_ADMIN, Role.WAREHOUSE_MANAGER, Role.DELIVERY_PARTNER)
 
 

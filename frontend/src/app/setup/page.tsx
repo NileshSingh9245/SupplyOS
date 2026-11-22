@@ -40,7 +40,7 @@ const setupStatusSchema = z.object({
 }).refine((value) => !value.is_setup_complete || value.is_initialized);
 const companyFields = ["company_name", "legal_name", "gstin", "phone", "email", "address", "currency"] as const;
 const ownerFields = ["admin_full_name", "admin_email", "admin_password", "setup_authorization"] as const;
-const blankWarehouse = { code: "WH-1", name: "Main Warehouse", city: "", state: "", pincode: "" };
+const blankWarehouseBase = { code: "WH-1", name: "Main Warehouse", city: "", state: "", pincode: "" };
 
 export default function SetupPage() {
   const router = useRouter();
@@ -53,6 +53,8 @@ export default function SetupPage() {
   const [blocked, setBlocked] = useState<"initialized" | "unconfigured" | null>(null);
   const mounted = useRef(false);
   const pending = useRef<AbortController | null>(null);
+  const warehouseId = useRef(0);
+  const blankWarehouse = { ...blankWarehouseBase, id: `w-${warehouseId.current++}` };
   const { register, control, trigger, handleSubmit, resetField, getValues, setFocus, formState: { errors } } = useForm<SetupFields>({
     resolver: zodResolver(setupSchema), mode: "onChange",
     defaultValues: {
@@ -123,9 +125,9 @@ export default function SetupPage() {
       const result = await api.post("/setup/initialize", {
         ...body, legal_name: body.legal_name || null, gstin: body.gstin || null,
         phone: body.phone || null, email: body.email || null, address: body.address || null,
-        warehouses: body.warehouses.map((warehouse) => ({
-          ...warehouse, city: warehouse.city || null, state: warehouse.state || null, pincode: warehouse.pincode || null,
-        })),
+      warehouses: body.warehouses.map((warehouse) => ({
+          ...warehouse, code: warehouse.code.trim(), city: warehouse.city || null, state: warehouse.state || null, pincode: warehouse.pincode || null,
+      })),
       }, { headers: { "X-Setup-Authorization": setup_authorization }, signal: controller.signal });
       if (!mounted.current) return;
       const complete = setupStatusSchema.safeParse(result.data);
@@ -292,7 +294,7 @@ export default function SetupPage() {
                 const codes = new Set(getValues("warehouses").map((warehouse) => warehouse.code.trim()));
                 let number = warehouses.length + 1;
                 while (codes.has(`WH-${number}`)) number += 1;
-                append({ ...blankWarehouse, code: `WH-${number}`, name: "" });
+                append({ ...blankWarehouseBase, id: `w-${warehouseId.current++}`, code: `WH-${number}`, name: "" });
               }}>
               + Add another warehouse
             </button>

@@ -14,9 +14,10 @@ from app.core.enums import Role
 from app.core.exceptions import Conflict, NotFound
 from app.infrastructure.db.models.product import Category, Product
 from app.shared.deps import get_current_user, require_admin_or_manager
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel, Paginated
 
-router = APIRouter(prefix="/products", tags=["products"])
+router = APIRouter(prefix="/products", tags=["products"], route_class=PrivateInputRoute)
 
 
 class CategoryOut(ORMModel):

@@ -17,9 +17,10 @@ from app.features.payments import service as payment_service
 from app.infrastructure.db.models.order import Payment
 from app.shared.deps import require_roles
 from app.shared import idempotency
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel
 
-router = APIRouter(prefix="/payments", tags=["payments"])
+router = APIRouter(prefix="/payments", tags=["payments"], route_class=PrivateInputRoute)
 require_finance_writer = require_roles(Role.SUPER_ADMIN, Role.ACCOUNTANT)
 require_payment_reader = require_roles(Role.SUPER_ADMIN, Role.ACCOUNTANT, Role.CUSTOMER)
 

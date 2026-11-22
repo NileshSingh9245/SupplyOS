@@ -13,9 +13,10 @@ from app.core.database import get_db
 from app.core.exceptions import Conflict, NotFound
 from app.infrastructure.db.models.warehouse import Warehouse, Rack, Shelf
 from app.shared.deps import get_current_user, require_admin_or_manager, require_staff
+from app.shared.private_route import PrivateInputRoute
 from app.shared.schemas import ORMModel
 
-router = APIRouter(prefix="/warehouses", tags=["warehouses"])
+router = APIRouter(prefix="/warehouses", tags=["warehouses"], route_class=PrivateInputRoute)
 
 
 class WarehouseOut(ORMModel):
